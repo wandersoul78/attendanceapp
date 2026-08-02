@@ -14,6 +14,7 @@ from db import (
     get_monthly_extra_holidays,
     get_employee_salary_for_month,
     get_weekly_off_overrides,
+    get_extra_holiday_overrides,
 )
 
 
@@ -60,6 +61,7 @@ def generate_monthly_payroll(year: int, month: int) -> pd.DataFrame:
     Formula:
       - Daily Rate = Monthly Salary / 30
       - Weekly Offs = Overridden Count if specified for employee, else Auto Tuesdays Count
+      - Extra Holidays = Overridden Count if specified for employee, else Global Extra Holidays
       - Total Paid Days = Present Days + Weekly Offs + Extra Holidays
       - Base Pay = Daily Rate * Total Paid Days
       - Overtime Pay = (Daily Rate / 8) * Overtime Hours
@@ -70,8 +72,9 @@ def generate_monthly_payroll(year: int, month: int) -> pd.DataFrame:
     att_df = load_attendance_df(year_month)
 
     auto_tuesdays_count = count_tuesdays_in_month(year, month)
-    extra_holidays_count = get_monthly_extra_holidays(year_month)
+    global_extra_holidays_count = get_monthly_extra_holidays(year_month)
     weekly_off_overrides = get_weekly_off_overrides(year_month)
+    extra_holiday_overrides = get_extra_holiday_overrides(year_month)
 
     total_days_in_month = calendar.monthrange(year, month)[1]
     target_date_str = f"{year_month}-{total_days_in_month:02d}"
@@ -87,8 +90,9 @@ def generate_monthly_payroll(year: int, month: int) -> pd.DataFrame:
         if monthly_salary <= 0:
             monthly_salary = float(emp.get("current_salary") or 0.0)
 
-        # Weekly Offs: check if custom override set for employee this month
+        # Weekly Offs & Extra Holidays: check if custom override set for employee this month
         emp_weekly_offs = weekly_off_overrides.get(emp_id, auto_tuesdays_count)
+        emp_extra_holidays = extra_holiday_overrides.get(emp_id, global_extra_holidays_count)
 
         # Filter attendance logs for this employee
         if not att_df.empty and "employee_id" in att_df.columns:
@@ -103,7 +107,7 @@ def generate_monthly_payroll(year: int, month: int) -> pd.DataFrame:
         total_ot_hours = float(emp_att["overtime_hours"].sum()) if not emp_att.empty else 0.0
 
         # Calculation basis
-        total_paid_days = present_days + emp_weekly_offs + extra_holidays_count
+        total_paid_days = present_days + emp_weekly_offs + emp_extra_holidays
 
         daily_rate = monthly_salary / 30.0 if monthly_salary > 0 else 0.0
         hourly_ot_rate = daily_rate / 8.0 if daily_rate > 0 else 0.0
@@ -118,7 +122,7 @@ def generate_monthly_payroll(year: int, month: int) -> pd.DataFrame:
             "Base Salary": round(monthly_salary, 2),
             "Present Days": present_days,
             "Weekly Offs": emp_weekly_offs,
-            "Extra Holidays": extra_holidays_count,
+            "Extra Holidays": emp_extra_holidays,
             "Total Paid Days": total_paid_days,
             "Overtime (Hours)": round(total_ot_hours, 1),
             "Daily Rate": round(daily_rate, 2),

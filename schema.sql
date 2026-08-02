@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     UNIQUE(employee_id, date)
 );
 
--- 4. Monthly Extra Holidays Configuration Table
+-- 4. Monthly Extra Holidays Configuration Table (Global Company Default)
 CREATE TABLE IF NOT EXISTS monthly_holidays (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     year_month VARCHAR(7) UNIQUE NOT NULL, -- Format: 'YYYY-MM' e.g. '2026-08'
@@ -40,12 +40,22 @@ CREATE TABLE IF NOT EXISTS monthly_holidays (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 5. Employee Monthly Weekly Off Overrides Table (Allows admin to edit Tuesdays per employee)
+-- 5. Employee Monthly Weekly Off Overrides Table (Allows editing Tuesdays per employee)
 CREATE TABLE IF NOT EXISTS employee_weekly_off_overrides (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
     year_month VARCHAR(7) NOT NULL, -- Format: 'YYYY-MM' e.g. '2026-08'
     weekly_offs INT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(employee_id, year_month)
+);
+
+-- 6. Employee Monthly Extra Holidays Overrides Table (Allows editing extra holidays per employee)
+CREATE TABLE IF NOT EXISTS employee_extra_holiday_overrides (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
+    year_month VARCHAR(7) NOT NULL, -- Format: 'YYYY-MM' e.g. '2026-08'
+    extra_holidays INT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(employee_id, year_month)
 );

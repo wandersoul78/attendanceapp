@@ -104,6 +104,18 @@ def init_db():
     );
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS employee_extra_holiday_overrides (
+        id TEXT PRIMARY KEY,
+        employee_id TEXT NOT NULL,
+        year_month TEXT NOT NULL,
+        extra_holidays INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(employee_id, year_month),
+        FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -218,6 +230,7 @@ def delete_employee(employee_id: str) -> bool:
     cursor.execute("DELETE FROM employee_salary_history WHERE employee_id = ?", (employee_id,))
     cursor.execute("DELETE FROM attendance WHERE employee_id = ?", (employee_id,))
     cursor.execute("DELETE FROM employee_weekly_off_overrides WHERE employee_id = ?", (employee_id,))
+    cursor.execute("DELETE FROM employee_extra_holiday_overrides WHERE employee_id = ?", (employee_id,))
     conn.commit()
     conn.close()
     return True
@@ -455,7 +468,7 @@ def load_attendance_df(year_month: str = None) -> pd.DataFrame:
 # ============================================================
 
 def get_monthly_extra_holidays(year_month: str) -> int:
-    """Get extra holiday count for a given month 'YYYY-MM'."""
+    """Get global extra holiday count for a given month 'YYYY-MM'."""
     if is_supabase_configured():
         supabase = get_supabase_client()
         res = supabase.table("monthly_holidays").select("other_holidays_count").eq("year_month", year_month).execute()
@@ -472,7 +485,7 @@ def get_monthly_extra_holidays(year_month: str) -> int:
 
 
 def set_monthly_extra_holidays(year_month: str, count: int) -> bool:
-    """Set extra holiday count for a given month 'YYYY-MM'."""
+    """Set global extra holiday count for a given month 'YYYY-MM'."""
     rec_id = generate_id()
     if is_supabase_configured():
         supabase = get_supabase_client()
@@ -533,6 +546,49 @@ def set_weekly_off_override(employee_id: str, year_month: str, weekly_offs: int)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(employee_id, year_month) DO UPDATE SET weekly_offs = excluded.weekly_offs
     """, (rec_id, employee_id, year_month, weekly_offs))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_extra_holiday_overrides(year_month: str) -> dict[str, int]:
+    """Get employee_id -> extra_holidays override mapping for a given month."""
+    init_db()
+    if is_supabase_configured():
+        supabase = get_supabase_client()
+        res = supabase.table("employee_extra_holiday_overrides").select("employee_id, extra_holidays").eq("year_month", year_month).execute()
+        if res.data:
+            return {r["employee_id"]: int(r["extra_holidays"]) for r in res.data}
+        return {}
+
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT employee_id, extra_holidays FROM employee_extra_holiday_overrides WHERE year_month = ?", (year_month,))
+    rows = cursor.fetchall()
+    conn.close()
+    return {row["employee_id"]: int(row["extra_holidays"]) for row in rows}
+
+
+def set_extra_holiday_override(employee_id: str, year_month: str, extra_holidays: int) -> bool:
+    """Set employee specific extra holiday override for a month."""
+    rec_id = generate_id()
+    if is_supabase_configured():
+        supabase = get_supabase_client()
+        supabase.table("employee_extra_holiday_overrides").upsert({
+            "id": rec_id,
+            "employee_id": employee_id,
+            "year_month": year_month,
+            "extra_holidays": extra_holidays
+        }, on_conflict="employee_id,year_month").execute()
+        return True
+
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO employee_extra_holiday_overrides (id, employee_id, year_month, extra_holidays)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(employee_id, year_month) DO UPDATE SET extra_holidays = excluded.extra_holidays
+    """, (rec_id, employee_id, year_month, extra_holidays))
     conn.commit()
     conn.close()
     return True

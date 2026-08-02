@@ -2,7 +2,7 @@
 admin.py
 Admin and Payroll Management Interface for Streamlit.
 Includes Attendance Log Editor, Employee directory, salary history updates, name edits,
-employee deletion, holiday & weekly off overrides, and comprehensive monthly wage export.
+employee deletion, combined holiday & weekly off overrides per employee, and comprehensive monthly wage export.
 """
 
 from datetime import date, datetime, time, timezone, timedelta
@@ -17,6 +17,7 @@ from db import (
     get_monthly_extra_holidays,
     set_monthly_extra_holidays,
     set_weekly_off_override,
+    set_extra_holiday_override,
     get_employee_status_today,
     update_attendance_record,
     delete_attendance_record,
@@ -91,8 +92,8 @@ def render_admin_dashboard():
 
         st.info(
             f"📅 **Calendar Default for {datetime(2000, selected_month, 1).strftime('%B')} {selected_year}**: "
-            f"Auto Tuesdays: **{tuesdays}** | Extra Holidays: **{extra_holidays}** "
-            f"*(You can edit weekly off count per employee under 'Holidays & Weekly Offs')*"
+            f"Auto Tuesdays: **{tuesdays}** | Default Extra Holidays: **{extra_holidays}** "
+            f"*(Manage individual Weekly Offs & Extra Holidays under 'Holidays & Weekly Offs')*"
         )
 
         payroll_df = generate_monthly_payroll(selected_year, selected_month)
@@ -295,10 +296,10 @@ def render_admin_dashboard():
                                 st.warning("Please check the confirmation box first.")
 
     # ----------------------------------------------------
-    # TAB 4: HOLIDAYS & WEEKLY OFF ADJUSTMENTS
+    # TAB 4: HOLIDAYS & WEEKLY OFFS (COMBINED)
     # ----------------------------------------------------
     with tab4:
-        st.subheader("Configure Extra Holidays & Employee Weekly Offs")
+        st.subheader("🌴 Employee Holidays & Weekly Off Adjustments")
 
         col_adj_y, col_adj_m = st.columns(2)
         with col_adj_y:
@@ -313,30 +314,13 @@ def render_admin_dashboard():
 
         ym_key = f"{adj_year:04d}-{adj_month:02d}"
         auto_tues = count_tuesdays_in_month(adj_year, adj_month)
-        current_extra = get_monthly_extra_holidays(ym_key)
 
-        st.divider()
-        st.markdown("### 🌴 1. Company Extra Holidays")
-        with st.form("set_holidays_form"):
-            extra_count = st.number_input(
-                f"Extra Holidays in {datetime(2000, adj_month, 1).strftime('%B')} {adj_year}",
-                min_value=0,
-                max_value=15,
-                value=current_extra
-            )
-            submit_h = st.form_submit_button("Save Holiday Setting", type="primary")
-
-            if submit_h:
-                set_monthly_extra_holidays(ym_key, extra_count)
-                st.success(f"Updated extra holidays for {ym_key} to {extra_count} day(s).")
-                st.rerun()
-
-        st.divider()
-        st.markdown("### ✏️ 2. Edit Weekly Offs per Employee")
         st.caption(
-            f"Default Tuesdays count for {datetime(2000, adj_month, 1).strftime('%B')} {adj_year} is **{auto_tues}**. "
-            f"If an employee was absent for an entire week (e.g. 1 week away), you can lower their Weekly Offs here."
+            f"Calendar default for **{datetime(2000, adj_month, 1).strftime('%B')} {adj_year}** is **{auto_tues} Tuesdays**. "
+            f"Below you can adjust **Weekly Offs** and **Extra Holidays** individually for each employee."
         )
+
+        st.divider()
 
         payroll_df_adj = generate_monthly_payroll(adj_year, adj_month)
 
@@ -347,18 +331,31 @@ def render_admin_dashboard():
                 emp_id = row["employee_id"]
                 emp_name = row["Employee"]
                 curr_weekly_offs = int(row["Weekly Offs"])
+                curr_extra_holidays = int(row["Extra Holidays"])
 
-                with st.expander(f"👤 {emp_name} — Current Weekly Offs: {curr_weekly_offs} days"):
-                    with st.form(f"off_override_form_{emp_id}_{ym_key}"):
-                        new_offs = st.number_input(
-                            f"Weekly Off Days allowed for {emp_name}",
-                            min_value=0,
-                            max_value=10,
-                            value=curr_weekly_offs,
-                            key=f"off_val_{emp_id}_{ym_key}"
-                        )
-                        submit_off = st.form_submit_button("Update Weekly Off Days")
-                        if submit_off:
+                with st.expander(f"👤 {emp_name} — Weekly Offs: {curr_weekly_offs} days | Extra Holidays: {curr_extra_holidays} days"):
+                    with st.form(f"combined_off_form_{emp_id}_{ym_key}"):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            new_offs = st.number_input(
+                                f"Weekly Off Days (Tuesdays)",
+                                min_value=0,
+                                max_value=10,
+                                value=curr_weekly_offs,
+                                key=f"off_input_{emp_id}_{ym_key}"
+                            )
+                        with c2:
+                            new_extras = st.number_input(
+                                f"Extra Paid Holidays",
+                                min_value=0,
+                                max_value=15,
+                                value=curr_extra_holidays,
+                                key=f"extra_input_{emp_id}_{ym_key}"
+                            )
+
+                        submit_comb = st.form_submit_button("Save Holiday & Off Settings", type="primary", use_container_width=True)
+                        if submit_comb:
                             set_weekly_off_override(emp_id, ym_key, new_offs)
-                            st.success(f"Updated Weekly Offs for {emp_name} in {ym_key} to {new_offs} day(s).")
+                            set_extra_holiday_override(emp_id, ym_key, new_extras)
+                            st.success(f"Saved Settings for {emp_name}: {new_offs} Weekly Offs, {new_extras} Extra Holidays.")
                             st.rerun()
