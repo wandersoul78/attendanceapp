@@ -1,7 +1,7 @@
 """
 attendance.py
 Employee attendance check-in and check-out interface with Hindi (Devanagari) labels,
-IST timezone support, and automatic unclosed punch cleanup.
+IST timezone support, unclosed punch cleanup, and continuous/marathon shift support.
 """
 
 from datetime import datetime, timezone, timedelta
@@ -11,7 +11,8 @@ from db import (
     get_employee_status_today,
     punch_in,
     punch_out,
-    auto_close_pending_past_checkins,
+    get_latest_unclosed_checkin,
+    process_continuous_overnight_punchout,
 )
 from payroll import calculate_overtime_hours
 from utils import now_display_datetime, get_ist_now, today_date_str
@@ -55,11 +56,27 @@ def render_punch_section():
     selected_id = emp_map[selected_name]
 
     today_str = today_date_str()
+    now_dt = get_ist_now()
+    now_iso = now_dt.isoformat()
 
-    # Safeguard: Auto-close any unclosed punches from yesterday or earlier at 5:00 PM (0 OT)
-    auto_closed_dates = auto_close_pending_past_checkins(selected_id, today_str)
-    if auto_closed_dates:
-        st.info(f"ℹ️ {selected_name} की पुरानी हाजिरी ({', '.join(auto_closed_dates)}) 05:00 PM पर समाप्त की गई है। (Admin can adjust if needed).")
+    # Check for unclosed continuous shift from yesterday
+    past_unclosed = get_latest_unclosed_checkin(selected_id, today_str)
+
+    if past_unclosed:
+        st.warning(
+            f"⚠️ **लगातार ड्यूटी / Continuous Shift Alert**: "
+            f"{selected_name} ने कल ({past_unclosed['date']}) **{format_iso_to_time(past_unclosed.get('check_in'))}** बजे Check IN किया था।"
+        )
+        
+        ot_today = calculate_overtime_hours(now_dt)
+        if st.button("📤 लगातार ड्यूटी का Check OUT दर्ज करें (Continuous Shift Punch Out)", use_container_width=True, type="primary"):
+            process_continuous_overnight_punchout(selected_id, past_unclosed['date'], today_str, now_dt, ot_today)
+            st.success(
+                f"✅ {selected_name} की लगातार ड्यूटी की हाजिरी दर्ज हो गई है! "
+                f"कल की ड्यूटी + 16 घंटे ओवर टाइम और आज ({today_str}) की पूरी हाजिरी अपने आप जुड़ गई है।"
+            )
+            st.rerun()
+        st.divider()
 
     record = get_employee_status_today(selected_id, today_str)
 
@@ -76,9 +93,6 @@ def render_punch_section():
         st.subheader(out_time_disp)
 
     st.divider()
-
-    now_dt = get_ist_now()
-    now_iso = now_dt.isoformat()
 
     # Flow 1: Not checked in yet today
     if record is None or not record.get("check_in"):

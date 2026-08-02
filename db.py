@@ -1,8 +1,8 @@
 """
 db.py
 Database interaction module supporting both Supabase (Cloud PostgreSQL)
-and SQLite (Local fallback). Includes graceful exception handling for missing tables
-and automatic pending past punch-out cleanup.
+and SQLite (Local fallback). Includes graceful exception handling for missing tables,
+unclosed punch cleanup, and continuous/marathon shift splitting.
 """
 
 import os
@@ -318,7 +318,7 @@ def get_employee_salary_for_month(employee_id: str, target_date_str: str) -> flo
 
 
 # ============================================================
-# ATTENDANCE PUNCHING & ADMIN EDITING
+# ATTENDANCE PUNCHING & CONTINUOUS SHIFT CLEANUP
 # ============================================================
 
 def get_employee_status_today(employee_id: str, date_str: str) -> dict:
@@ -351,13 +351,8 @@ def get_employee_status_today(employee_id: str, date_str: str) -> dict:
         conn.close()
 
 
-def auto_close_pending_past_checkins(employee_id: str, today_str: str) -> list[str]:
-    """
-    Find any past unclosed check-ins (check_in is set, check_out is null/empty prior to today_str)
-    and auto-close them at standard 5:00 PM shift end (0 overtime hours).
-    Returns list of dates that were auto-closed.
-    """
-    closed_dates = []
+def get_latest_unclosed_checkin(employee_id: str, today_str: str) -> dict:
+    """Find any unclosed attendance record (check_in set, check_out empty) prior to today_str."""
     if is_supabase_configured():
         try:
             supabase = get_supabase_client()
@@ -366,42 +361,88 @@ def auto_close_pending_past_checkins(employee_id: str, today_str: str) -> list[s
                 .eq("employee_id", employee_id) \
                 .lt("date", today_str) \
                 .is_("check_out", "null") \
+                .order("date", desc=True) \
+                .limit(1) \
                 .execute()
-            records = res.data or []
-            for r in records:
-                past_date_str = r["date"]
-                # Default 5:00 PM IST on that date
-                d_obj = date.fromisoformat(past_date_str)
-                default_out_dt = datetime.combine(d_obj, time(17, 0), tzinfo=IST)
-                supabase.table("attendance").update({
-                    "check_out": default_out_dt.isoformat(),
-                    "overtime_hours": 0.0
-                }).eq("id", r["id"]).execute()
-                closed_dates.append(past_date_str)
-            return closed_dates
+            if res.data:
+                return res.data[0]
+            return None
         except Exception:
-            return []
+            return None
 
     conn = get_sqlite_conn()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT id, date FROM attendance 
+            SELECT * FROM attendance 
             WHERE employee_id = ? AND date < ? AND (check_out IS NULL OR check_out = '')
+            ORDER BY date DESC LIMIT 1
         """, (employee_id, today_str))
-        rows = cursor.fetchall()
-        for r in rows:
-            past_date_str = r["date"]
-            d_obj = date.fromisoformat(past_date_str)
-            default_out_dt = datetime.combine(d_obj, time(17, 0), tzinfo=IST)
-            cursor.execute("""
-                UPDATE attendance SET check_out = ?, overtime_hours = 0.0 WHERE id = ?
-            """, (default_out_dt.isoformat(), r["id"]))
-            closed_dates.append(past_date_str)
-        conn.commit()
-        return closed_dates
+        row = cursor.fetchone()
+        return dict(row) if row else None
     except Exception:
-        return []
+        return None
+    finally:
+        conn.close()
+
+
+def process_continuous_overnight_punchout(employee_id: str, past_date_str: str, today_str: str, now_dt: datetime, ot_today: float) -> bool:
+    """
+    Handles continuous/marathon work from past_date_str (Day 1 09:00 AM) through today_str (Day 2):
+    1. Closes Day 1 at Day 2 09:00 AM (adds 16.0 hours overtime for overnight work on Day 1).
+    2. Creates Day 2 attendance record starting at Day 2 09:00 AM and ending at now_dt.
+    """
+    past_d_obj = date.fromisoformat(past_date_str)
+    today_d_obj = date.fromisoformat(today_str)
+
+    # 1. Close Day 1 at 09:00 AM on Day 2 -> 16 Hours Overtime (from 5 PM Day 1 to 9 AM Day 2)
+    day2_9am = datetime.combine(today_d_obj, time(9, 0), tzinfo=IST)
+    
+    if is_supabase_configured():
+        supabase = get_supabase_client()
+        # Update Day 1
+        supabase.table("attendance").update({
+            "check_out": day2_9am.isoformat(),
+            "overtime_hours": 16.0
+        }).eq("employee_id", employee_id).eq("date", past_date_str).execute()
+
+        # Upsert Day 2
+        rec_id = generate_id()
+        day2_9am_iso = day2_9am.isoformat()
+        now_iso = now_dt.isoformat()
+        supabase.table("attendance").upsert({
+            "id": rec_id,
+            "employee_id": employee_id,
+            "date": today_str,
+            "check_in": day2_9am_iso,
+            "check_out": now_iso,
+            "overtime_hours": ot_today
+        }, on_conflict="employee_id,date").execute()
+        return True
+
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    try:
+        # Update Day 1
+        cursor.execute("""
+            UPDATE attendance SET check_out = ?, overtime_hours = 16.0
+            WHERE employee_id = ? AND date = ?
+        """, (day2_9am.isoformat(), employee_id, past_date_str))
+
+        # Upsert Day 2
+        rec_id = generate_id()
+        day2_9am_iso = day2_9am.isoformat()
+        now_iso = now_dt.isoformat()
+        cursor.execute("""
+            INSERT INTO attendance (id, employee_id, date, check_in, check_out, overtime_hours)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(employee_id, date) DO UPDATE SET
+                check_in = excluded.check_in,
+                check_out = excluded.check_out,
+                overtime_hours = excluded.overtime_hours
+        """, (rec_id, employee_id, today_str, day2_9am_iso, now_iso, ot_today))
+        conn.commit()
+        return True
     finally:
         conn.close()
 
