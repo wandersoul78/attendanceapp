@@ -1,7 +1,8 @@
 """
 db.py
 Database interaction module supporting both Supabase (Cloud PostgreSQL)
-and SQLite (Local fallback). Includes graceful exception handling for missing tables.
+and SQLite (Local fallback). Includes graceful exception handling for missing tables
+and automatic pending past punch-out cleanup.
 """
 
 import os
@@ -9,10 +10,11 @@ import sqlite3
 import uuid
 import pandas as pd
 import streamlit as st
-from datetime import datetime, date
+from datetime import datetime, date, time, timezone, timedelta
 
 # SQLite fallback path
 SQLITE_DB_PATH = "attendance.db"
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def is_supabase_configured() -> bool:
@@ -345,6 +347,61 @@ def get_employee_status_today(employee_id: str, date_str: str) -> dict:
         return dict(row) if row else None
     except Exception:
         return None
+    finally:
+        conn.close()
+
+
+def auto_close_pending_past_checkins(employee_id: str, today_str: str) -> list[str]:
+    """
+    Find any past unclosed check-ins (check_in is set, check_out is null/empty prior to today_str)
+    and auto-close them at standard 5:00 PM shift end (0 overtime hours).
+    Returns list of dates that were auto-closed.
+    """
+    closed_dates = []
+    if is_supabase_configured():
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("attendance") \
+                .select("*") \
+                .eq("employee_id", employee_id) \
+                .lt("date", today_str) \
+                .is_("check_out", "null") \
+                .execute()
+            records = res.data or []
+            for r in records:
+                past_date_str = r["date"]
+                # Default 5:00 PM IST on that date
+                d_obj = date.fromisoformat(past_date_str)
+                default_out_dt = datetime.combine(d_obj, time(17, 0), tzinfo=IST)
+                supabase.table("attendance").update({
+                    "check_out": default_out_dt.isoformat(),
+                    "overtime_hours": 0.0
+                }).eq("id", r["id"]).execute()
+                closed_dates.append(past_date_str)
+            return closed_dates
+        except Exception:
+            return []
+
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT id, date FROM attendance 
+            WHERE employee_id = ? AND date < ? AND (check_out IS NULL OR check_out = '')
+        """, (employee_id, today_str))
+        rows = cursor.fetchall()
+        for r in rows:
+            past_date_str = r["date"]
+            d_obj = date.fromisoformat(past_date_str)
+            default_out_dt = datetime.combine(d_obj, time(17, 0), tzinfo=IST)
+            cursor.execute("""
+                UPDATE attendance SET check_out = ?, overtime_hours = 0.0 WHERE id = ?
+            """, (default_out_dt.isoformat(), r["id"]))
+            closed_dates.append(past_date_str)
+        conn.commit()
+        return closed_dates
+    except Exception:
+        return []
     finally:
         conn.close()
 

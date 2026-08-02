@@ -1,12 +1,18 @@
 """
 attendance.py
-Employee attendance check-in and check-out interface with Hindi (Devanagari) labels
-and IST timezone support.
+Employee attendance check-in and check-out interface with Hindi (Devanagari) labels,
+IST timezone support, and automatic unclosed punch cleanup.
 """
 
 from datetime import datetime, timezone, timedelta
 import streamlit as st
-from db import load_employees, get_employee_status_today, punch_in, punch_out
+from db import (
+    load_employees,
+    get_employee_status_today,
+    punch_in,
+    punch_out,
+    auto_close_pending_past_checkins,
+)
 from payroll import calculate_overtime_hours
 from utils import now_display_datetime, get_ist_now, today_date_str
 
@@ -49,6 +55,12 @@ def render_punch_section():
     selected_id = emp_map[selected_name]
 
     today_str = today_date_str()
+
+    # Safeguard: Auto-close any unclosed punches from yesterday or earlier at 5:00 PM (0 OT)
+    auto_closed_dates = auto_close_pending_past_checkins(selected_id, today_str)
+    if auto_closed_dates:
+        st.info(f"ℹ️ {selected_name} की पुरानी हाजिरी ({', '.join(auto_closed_dates)}) 05:00 PM पर समाप्त की गई है। (Admin can adjust if needed).")
+
     record = get_employee_status_today(selected_id, today_str)
 
     in_time_disp = format_iso_to_time(record.get("check_in")) if record else "—"
