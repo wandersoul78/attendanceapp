@@ -1,28 +1,33 @@
 """
 utils.py
-Small shared helpers so date/time formatting is consistent across the app.
+Small shared helpers so date/time formatting is consistent across the app
+using Indian Standard Time (IST / UTC+5:30).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# Indian Standard Time timezone offset (+05:30)
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def get_ist_now() -> datetime:
+    """Return current datetime in Indian Standard Time (IST)."""
+    return datetime.now(IST)
 
 
 def today_date_str() -> str:
-    """e.g. '2026-07-11' — stored in its own Date column for easy date-range formulas."""
-    return datetime.now().strftime("%Y-%m-%d")
+    """Return today's date string 'YYYY-MM-DD' in IST."""
+    return get_ist_now().strftime("%Y-%m-%d")
 
 
 def now_full_str() -> str:
-    """e.g. '2026-07-11 02:30:23 PM' — stored in IN / OUT columns."""
-    return datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    """Return full datetime string 'YYYY-MM-DD HH:MM:SS AM/PM' in IST."""
+    return get_ist_now().strftime("%Y-%m-%d %I:%M:%S %p")
 
 
 def now_display_datetime() -> str:
-    """e.g. '2026-07-11 · 09:22 AM' — shown at the top of the dashboard."""
-    return datetime.now().strftime("%Y %m %d  ·  %I:%M %p")
-
-def now_display_datetime() -> str:
-    """e.g. '11 July 2026 · 09:22 AM' — shown at the top of the dashboard."""
-    return datetime.now().strftime("%d %B %Y  ·  %I:%M %p")
+    """Return formatted display datetime in IST e.g. '02 August 2026 · 03:15 PM'."""
+    return get_ist_now().strftime("%d %B %Y  ·  %I:%M %p IST")
 
 
 def pretty_date(iso_date_str: str) -> str:
@@ -31,12 +36,3 @@ def pretty_date(iso_date_str: str) -> str:
         return datetime.strptime(iso_date_str, "%Y-%m-%d").strftime("%d %B %Y")
     except (ValueError, TypeError):
         return iso_date_str
-
-
-def extract_time(full_str: str) -> str:
-    """'2026-07-11 02:30:23 PM' -> '02:30:23 PM'. Handles blanks safely."""
-    full_str = (full_str or "").strip()
-    if not full_str:
-        return ""
-    parts = full_str.split(" ", 1)
-    return parts[1] if len(parts) == 2 else ""

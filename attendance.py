@@ -1,17 +1,17 @@
 """
 attendance.py
-Employee attendance check-in and check-out interface.
+Employee attendance check-in and check-out interface with IST timezone support.
 """
 
-from datetime import datetime, date
+from datetime import datetime
 import streamlit as st
 from db import load_employees, get_employee_status_today, punch_in, punch_out
 from payroll import calculate_overtime_hours
-from utils import now_display_datetime
+from utils import now_display_datetime, get_ist_now, today_date_str
 
 
 def format_iso_to_time(iso_str: str) -> str:
-    """Format ISO timestamp string to readable 12-hour time (e.g. 09:15 AM)."""
+    """Format ISO timestamp string to readable 12-hour time (e.g. 03:15 PM IST)."""
     if not iso_str:
         return "—"
     try:
@@ -37,7 +37,7 @@ def render_punch_section():
     selected_name = st.selectbox("Select Employee Name", emp_names)
     selected_id = emp_map[selected_name]
 
-    today_str = date.today().isoformat()
+    today_str = today_date_str()
     record = get_employee_status_today(selected_id, today_str)
 
     in_time_disp = format_iso_to_time(record.get("check_in")) if record else "—"
@@ -54,14 +54,14 @@ def render_punch_section():
 
     st.divider()
 
-    now_dt = datetime.now()
+    now_dt = get_ist_now()
     now_iso = now_dt.isoformat()
 
     # Flow 1: Not checked in yet today
     if record is None or not record.get("check_in"):
         if st.button("📥 CHECK IN NOW", use_container_width=True, type="primary"):
             punch_in(selected_id, today_str, now_iso)
-            st.success(f"Checked IN successfully at {now_dt.strftime('%I:%M %p')}!")
+            st.success(f"Checked IN successfully at {now_dt.strftime('%I:%M %p')} IST!")
             st.rerun()
 
     # Flow 2: Checked in, but not checked out yet
@@ -73,7 +73,7 @@ def render_punch_section():
         if st.button("📤 CHECK OUT NOW", use_container_width=True, type="primary"):
             ot_hours_final = calculate_overtime_hours(now_dt)
             punch_out(selected_id, today_str, now_iso, ot_hours_final)
-            st.success(f"Checked OUT successfully at {now_dt.strftime('%I:%M %p')} (Overtime: {ot_hours_final} hrs)!")
+            st.success(f"Checked OUT successfully at {now_dt.strftime('%I:%M %p')} IST (Overtime: {ot_hours_final} hrs)!")
             st.rerun()
 
     # Flow 3: Already checked out today

@@ -65,7 +65,7 @@ def init_db():
         effective_from DATE NOT NULL,
         effective_to DATE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (employee_id) REFERENCES employees(id)
+        FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
     );
     """)
 
@@ -79,7 +79,7 @@ def init_db():
         overtime_hours REAL DEFAULT 0.0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(employee_id, date),
-        FOREIGN KEY (employee_id) REFERENCES employees(id)
+        FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
     );
     """)
 
@@ -100,7 +100,7 @@ def init_db():
         weekly_offs INTEGER NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(employee_id, year_month),
-        FOREIGN KEY (employee_id) REFERENCES employees(id)
+        FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
     );
     """)
 
@@ -183,6 +183,44 @@ def add_employee(name: str, monthly_salary: float, effective_from: str = None) -
         return False
     finally:
         conn.close()
+
+
+def update_employee_name(employee_id: str, new_name: str) -> bool:
+    """Rename an employee."""
+    if not new_name or not new_name.strip():
+        return False
+    
+    new_name = new_name.strip()
+    if is_supabase_configured():
+        supabase = get_supabase_client()
+        supabase.table("employees").update({"name": new_name}).eq("id", employee_id).execute()
+        return True
+
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE employees SET name = ? WHERE id = ?", (new_name, employee_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_employee(employee_id: str) -> bool:
+    """Delete an employee and all associated records."""
+    if is_supabase_configured():
+        supabase = get_supabase_client()
+        supabase.table("employees").delete().eq("id", employee_id).execute()
+        return True
+
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON")
+    cursor.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
+    cursor.execute("DELETE FROM employee_salary_history WHERE employee_id = ?", (employee_id,))
+    cursor.execute("DELETE FROM attendance WHERE employee_id = ?", (employee_id,))
+    cursor.execute("DELETE FROM employee_weekly_off_overrides WHERE employee_id = ?", (employee_id,))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def update_employee_salary(employee_id: str, new_salary: float, effective_from: str) -> bool:

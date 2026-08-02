@@ -1,8 +1,8 @@
 """
 admin.py
 Admin and Payroll Management Interface for Streamlit.
-Includes Employee directory, salary history updates, holiday & weekly off overrides,
-and comprehensive monthly wage export.
+Includes Employee directory, salary history updates, name edits, employee deletion,
+holiday & weekly off overrides, and comprehensive monthly wage export.
 """
 
 from datetime import date, datetime
@@ -12,6 +12,8 @@ from db import (
     load_employees,
     add_employee,
     update_employee_salary,
+    update_employee_name,
+    delete_employee,
     get_monthly_extra_holidays,
     set_monthly_extra_holidays,
     set_weekly_off_override,
@@ -119,15 +121,29 @@ def render_admin_dashboard():
                             st.error("Failed to add employee (name might already exist).")
 
         with col_list:
-            st.markdown("### 📋 Active Directory & Salary Update")
+            st.markdown("### 📋 Active Directory")
             if not employees:
                 st.info("No employees registered yet.")
             else:
                 for emp in employees:
                     with st.expander(f"👤 {emp['name']} — Current: ₹{emp.get('current_salary', 0):,.2f}"):
-                        st.write(f"**ID**: `{emp['id']}`")
-                        st.write(f"**Active Salary**: ₹{emp.get('current_salary', 0):,.2f}/month")
+                        st.caption(f"Employee ID: `{emp['id']}`")
+                        
+                        # 1. Edit Name Section
+                        st.markdown("#### ✏️ Edit Name")
+                        with st.form(f"rename_form_{emp['id']}"):
+                            edited_name = st.text_input("Full Name", value=emp['name'], key=f"name_input_{emp['id']}")
+                            submit_rename = st.form_submit_button("Save Name Change")
+                            if submit_rename:
+                                if edited_name and edited_name.strip() != emp['name']:
+                                    update_employee_name(emp['id'], edited_name.strip())
+                                    st.success("Employee name updated!")
+                                    st.rerun()
 
+                        st.divider()
+
+                        # 2. Update Salary Section
+                        st.markdown("#### 💰 Update Salary Rate")
                         with st.form(f"update_salary_{emp['id']}"):
                             updated_sal = st.number_input(
                                 "New Monthly Salary (₹)",
@@ -147,6 +163,19 @@ def render_admin_dashboard():
                                 update_employee_salary(emp['id'], updated_sal, update_eff_date.isoformat())
                                 st.success("Salary rate updated! Historical reports remain preserved.")
                                 st.rerun()
+
+                        st.divider()
+
+                        # 3. Delete Employee Section
+                        st.markdown("#### 🗑️ Delete Employee")
+                        confirm_delete = st.checkbox(f"I understand this will permanently delete {emp['name']}", key=f"del_chk_{emp['id']}")
+                        if st.button(f"Permanently Delete {emp['name']}", key=f"del_btn_{emp['id']}", type="primary"):
+                            if confirm_delete:
+                                delete_employee(emp['id'])
+                                st.success(f"Deleted {emp['name']} permanently.")
+                                st.rerun()
+                            else:
+                                st.warning("Please check the confirmation box first.")
 
     # ----------------------------------------------------
     # TAB 3: HOLIDAYS & WEEKLY OFF ADJUSTMENTS
