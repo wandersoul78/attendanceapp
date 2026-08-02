@@ -1,7 +1,8 @@
 """
 attendance.py
 Employee attendance check-in and check-out interface with Hindi (Devanagari) labels,
-IST timezone support, unclosed punch cleanup, and continuous/marathon shift support.
+IST timezone support, 30-minute check-in rounding, unclosed punch cleanup,
+and continuous/marathon shift support.
 """
 
 from datetime import datetime, timezone, timedelta
@@ -15,7 +16,7 @@ from db import (
     process_continuous_overnight_punchout,
 )
 from payroll import calculate_overtime_hours
-from utils import now_display_datetime, get_ist_now, today_date_str
+from utils import now_display_datetime, get_ist_now, today_date_str, round_check_in_time
 
 # Indian Standard Time offset (+05:30)
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -57,7 +58,6 @@ def render_punch_section():
 
     today_str = today_date_str()
     now_dt = get_ist_now()
-    now_iso = now_dt.isoformat()
 
     # Check for unclosed continuous shift from yesterday
     past_unclosed = get_latest_unclosed_checkin(selected_id, today_str)
@@ -97,8 +97,9 @@ def render_punch_section():
     # Flow 1: Not checked in yet today
     if record is None or not record.get("check_in"):
         if st.button("📥 आने का समय दर्ज करें (CHECK IN)", use_container_width=True, type="primary"):
-            punch_in(selected_id, today_str, now_iso)
-            st.success(f"{selected_name} का आने का समय {now_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है!")
+            rounded_in_dt = round_check_in_time(now_dt)
+            punch_in(selected_id, today_str, rounded_in_dt.isoformat())
+            st.success(f"{selected_name} का आने का समय {rounded_in_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है!")
             st.rerun()
 
     # Flow 2: Checked in, but not checked out yet
@@ -109,7 +110,7 @@ def render_punch_section():
 
         if st.button("📤 जाने का समय दर्ज करें (CHECK OUT)", use_container_width=True, type="primary"):
             ot_hours_final = calculate_overtime_hours(now_dt)
-            punch_out(selected_id, today_str, now_iso, ot_hours_final)
+            punch_out(selected_id, today_str, now_dt.isoformat(), ot_hours_final)
             st.success(f"{selected_name} का जाने का समय {now_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है (ओवरटाइम: {ot_hours_final} घंटे)!")
             st.rerun()
 

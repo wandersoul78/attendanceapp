@@ -1,10 +1,50 @@
 """
 test_payroll.py
-Unit tests to verify overtime calculation, Tuesday counting, and database setup.
+Unit tests to verify overtime calculation, Tuesday counting, and check-in time rounding.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from payroll import calculate_overtime_hours, count_tuesdays_in_month
+from utils import round_check_in_time, IST
+
+
+def test_check_in_rounding():
+    # 8:59 AM -> 9:00 AM
+    dt1 = datetime(2026, 8, 2, 8, 59, tzinfo=IST)
+    res1 = round_check_in_time(dt1)
+    assert res1.hour == 9 and res1.minute == 0, f"Failed at 8:59 AM: {res1}"
+
+    # 8:50 AM -> 9:00 AM
+    dt2 = datetime(2026, 8, 2, 8, 50, tzinfo=IST)
+    res2 = round_check_in_time(dt2)
+    assert res2.hour == 9 and res2.minute == 0, f"Failed at 8:50 AM: {res2}"
+
+    # 8:45 AM -> 9:00 AM
+    dt3 = datetime(2026, 8, 2, 8, 45, tzinfo=IST)
+    res3 = round_check_in_time(dt3)
+    assert res3.hour == 9 and res3.minute == 0, f"Failed at 8:45 AM: {res3}"
+
+    # 8:31 AM -> 9:00 AM
+    dt4 = datetime(2026, 8, 2, 8, 31, tzinfo=IST)
+    res4 = round_check_in_time(dt4)
+    assert res4.hour == 9 and res4.minute == 0, f"Failed at 8:31 AM: {res4}"
+
+    # 8:30 AM -> 8:00 AM
+    dt5 = datetime(2026, 8, 2, 8, 30, tzinfo=IST)
+    res5 = round_check_in_time(dt5)
+    assert res5.hour == 8 and res5.minute == 0, f"Failed at 8:30 AM: {res5}"
+
+    # 8:29 AM -> 8:00 AM
+    dt6 = datetime(2026, 8, 2, 8, 29, tzinfo=IST)
+    res6 = round_check_in_time(dt6)
+    assert res6.hour == 8 and res6.minute == 0, f"Failed at 8:29 AM: {res6}"
+
+    # 8:15 AM -> 8:00 AM
+    dt7 = datetime(2026, 8, 2, 8, 15, tzinfo=IST)
+    res7 = round_check_in_time(dt7)
+    assert res7.hour == 8 and res7.minute == 0, f"Failed at 8:15 AM: {res7}"
+
+    print("[OK] All Check-IN Rounding Unit Tests Passed!")
 
 
 def test_overtime_calculation():
@@ -60,5 +100,6 @@ def test_tuesdays_count():
 
 
 if __name__ == "__main__":
+    test_check_in_rounding()
     test_overtime_calculation()
     test_tuesdays_count()
