@@ -1,6 +1,7 @@
 """
 attendance.py
-Employee attendance check-in and check-out interface with IST timezone support.
+Employee attendance check-in and check-out interface with Hindi (Devanagari) labels
+and IST timezone support.
 """
 
 from datetime import datetime, timezone, timedelta
@@ -32,19 +33,19 @@ def format_iso_to_time(iso_str: str) -> str:
 
 
 def render_punch_section():
-    st.subheader("🕒 Mark Attendance")
+    st.subheader("🕒 हाजिरी लगाएं (Attendance)")
     st.caption(now_display_datetime())
 
     employees = load_employees()
 
     if not employees:
-        st.warning("No employees found. Please register employees in the Admin Dashboard.")
+        st.warning("कोई कर्मचारी नहीं मिला। (No employees registered.)")
         return
 
     emp_names = [e["name"] for e in employees]
     emp_map = {e["name"]: e["id"] for e in employees}
 
-    selected_name = st.selectbox("Select Employee Name", emp_names)
+    selected_name = st.selectbox("कर्मचारी का नाम चुनें (Select Employee Name)", emp_names)
     selected_id = emp_map[selected_name]
 
     today_str = today_date_str()
@@ -56,10 +57,10 @@ def render_punch_section():
 
     col_in, col_out = st.columns(2)
     with col_in:
-        st.markdown("**IN TIME**")
+        st.markdown("**आने का समय (IN)**")
         st.subheader(in_time_disp)
     with col_out:
-        st.markdown("**OUT TIME**")
+        st.markdown("**जाने का समय (OUT)**")
         st.subheader(out_time_disp)
 
     st.divider()
@@ -69,25 +70,25 @@ def render_punch_section():
 
     # Flow 1: Not checked in yet today
     if record is None or not record.get("check_in"):
-        if st.button("📥 CHECK IN NOW", use_container_width=True, type="primary"):
+        if st.button("📥 आने का समय दर्ज करें (CHECK IN)", use_container_width=True, type="primary"):
             punch_in(selected_id, today_str, now_iso)
-            st.success(f"Checked IN successfully at {now_dt.strftime('%I:%M %p')} IST!")
+            st.success(f"{selected_name} का आने का समय {now_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है!")
             st.rerun()
 
     # Flow 2: Checked in, but not checked out yet
     elif record.get("check_in") and not record.get("check_out"):
         ot_projected = calculate_overtime_hours(now_dt)
         if ot_projected > 0:
-            st.info(f"⏳ Current Punch Out will log **{ot_projected:.1f} Hours Overtime**.")
+            st.info(f"⏳ अभी जाने का समय दर्ज करने पर **{ot_projected:.1f} घंटे ओवरटाइम** दर्ज होगा।")
 
-        if st.button("📤 CHECK OUT NOW", use_container_width=True, type="primary"):
+        if st.button("📤 जाने का समय दर्ज करें (CHECK OUT)", use_container_width=True, type="primary"):
             ot_hours_final = calculate_overtime_hours(now_dt)
             punch_out(selected_id, today_str, now_iso, ot_hours_final)
-            st.success(f"Checked OUT successfully at {now_dt.strftime('%I:%M %p')} IST (Overtime: {ot_hours_final} hrs)!")
+            st.success(f"{selected_name} का जाने का समय {now_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है (ओवरटाइम: {ot_hours_final} घंटे)!")
             st.rerun()
 
     # Flow 3: Already checked out today
     else:
-        st.success(f"✅ Attendance complete for {selected_name} today.")
+        st.success(f"✅ {selected_name} की आज की हाजिरी पूरी हो चुकी है।")
         if ot_hours > 0:
-            st.info(f"Overtime Recorded: **{ot_hours:.1f} Hours**")
+            st.info(f"ओवरटाइम (Overtime): **{ot_hours:.1f} घंटे**")
