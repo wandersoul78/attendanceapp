@@ -1,65 +1,83 @@
 """
 attendance.py
-The check-in / check-out flow: figures out an employee's status for today
-and renders a clean IN / OUT display plus the right button.
+Employee attendance check-in and check-out interface.
 """
 
+from datetime import datetime, date
 import streamlit as st
-import pandas as pd
-
-from sheets import create_checkin_row, update_checkout_row
-from utils import today_date_str, now_full_str, extract_time,pretty_date
-
-
-def get_employee_status_today(df: pd.DataFrame, date_str: str, employee: str):
-    """Return today's IN/OUT values for an employee, or None if not checked in."""
-    if df.empty:
-        return None
-    match = df[(df["Employee"] == employee) & (df["Date"] == date_str)]
-    if match.empty:
-        return None
-    row = match.iloc[0]
-    return {
-        "in": str(row.get("IN", "") or ""),
-        "out": str(row.get("OUT", "") or ""),
-    }
+from db import load_employees, get_employee_status_today, punch_in, punch_out
+from payroll import calculate_overtime_hours
+from utils import now_display_datetime
 
 
-def render_punch_section(df: pd.DataFrame, employees: list[str]):
-    st.subheader("Attendance")
+def format_iso_to_time(iso_str: str) -> str:
+    """Format ISO timestamp string to readable 12-hour time (e.g. 09:15 AM)."""
+    if not iso_str:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%I:%M %p")
+    except Exception:
+        return iso_str
+
+
+def render_punch_section():
+    st.subheader("🕒 Mark Attendance")
+    st.caption(now_display_datetime())
+
+    employees = load_employees()
 
     if not employees:
-        st.warning("No employees found. Add names to the 'employees' tab in your Google Sheet.")
+        st.warning("No employees found. Please register employees in the Admin Dashboard.")
         return
 
-    employee = st.selectbox("Employee", employees)
-    date_str = today_date_str()
-    record = get_employee_status_today(df, date_str, employee)
+    emp_names = [e["name"] for e in employees]
+    emp_map = {e["name"]: e["id"] for e in employees}
 
-    in_time = extract_time(record["in"]) if record else ""
-    out_time = extract_time(record["out"]) if record else ""
+    selected_name = st.selectbox("Select Employee Name", emp_names)
+    selected_id = emp_map[selected_name]
+
+    today_str = date.today().isoformat()
+    record = get_employee_status_today(selected_id, today_str)
+
+    in_time_disp = format_iso_to_time(record.get("check_in")) if record else "—"
+    out_time_disp = format_iso_to_time(record.get("check_out")) if record else "—"
+    ot_hours = record.get("overtime_hours", 0.0) if record else 0.0
 
     col_in, col_out = st.columns(2)
     with col_in:
-        st.markdown("**IN**")
-        st.write(in_time if in_time else "—")
+        st.markdown("**IN TIME**")
+        st.subheader(in_time_disp)
     with col_out:
-        st.markdown("**OUT**")
-        st.write(out_time if out_time else "—")
+        st.markdown("**OUT TIME**")
+        st.subheader(out_time_disp)
 
-    st.write("")
+    st.divider()
 
-    if record is None:
-        if st.button("CHECK IN", use_container_width=True, type="primary"):
-            with st.spinner("Saving..."):
-                create_checkin_row(employee, date_str, now_full_str())
+    now_dt = datetime.now()
+    now_iso = now_dt.isoformat()
+
+    # Flow 1: Not checked in yet today
+    if record is None or not record.get("check_in"):
+        if st.button("📥 CHECK IN NOW", use_container_width=True, type="primary"):
+            punch_in(selected_id, today_str, now_iso)
+            st.success(f"Checked IN successfully at {now_dt.strftime('%I:%M %p')}!")
             st.rerun()
 
-    elif record["in"] and not record["out"]:
-        if st.button("CHECK OUT", use_container_width=True, type="primary"):
-            with st.spinner("Saving..."):
-                update_checkout_row(employee, date_str, now_full_str())
+    # Flow 2: Checked in, but not checked out yet
+    elif record.get("check_in") and not record.get("check_out"):
+        ot_projected = calculate_overtime_hours(now_dt)
+        if ot_projected > 0:
+            st.info(f"⏳ Current Punch Out will log **{ot_projected:.1f} Hours Overtime**.")
+
+        if st.button("📤 CHECK OUT NOW", use_container_width=True, type="primary"):
+            ot_hours_final = calculate_overtime_hours(now_dt)
+            punch_out(selected_id, today_str, now_iso, ot_hours_final)
+            st.success(f"Checked OUT successfully at {now_dt.strftime('%I:%M %p')} (Overtime: {ot_hours_final} hrs)!")
             st.rerun()
 
+    # Flow 3: Already checked out today
     else:
-        st.success(f"Attendance complete for {employee}.")
+        st.success(f"✅ Attendance complete for {selected_name} today.")
+        if ot_hours > 0:
+            st.info(f"Overtime Recorded: **{ot_hours:.1f} Hours**")

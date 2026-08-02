@@ -1,37 +1,37 @@
 """
 app.py
-Entry point. Run locally with:  streamlit run app.py
+Entry point for the Company Attendance & Payroll Streamlit Application.
+Run locally with: streamlit run app.py
 """
 
 import streamlit as st
-
-from sheets import load_employees, load_attendance_df
+from db import is_supabase_configured
 from attendance import render_punch_section
-from dashboard import render_dashboard
-from utils import today_date_str, now_display_datetime
+from admin import render_admin_dashboard
 
-st.set_page_config(page_title="Company Attendance", page_icon="🕒", layout="centered")
+st.set_page_config(
+    page_title="Company Attendance & Payroll",
+    page_icon="🕒",
+    layout="wide"
+)
 
-st.title("🕒 Company Attendance")
-st.caption(now_display_datetime())
-
-try:
-    employees = load_employees()
-    df = load_attendance_df()
-except Exception as e:
-    st.error(
-        "Could not connect to Google Sheets. Check that your `.streamlit/secrets.toml` "
-        "is filled in correctly and that the sheet is shared with your service account "
-        "email. Details below."
-    )
-    st.exception(e)
-    st.stop()
-
-render_punch_section(df, employees)
+# Header & Connection Info
+col_title, col_status = st.columns([3, 1])
+with col_title:
+    st.title("🕒 Attendance & Payroll Portal")
+with col_status:
+    if is_supabase_configured():
+        st.success("⚡ Database: Supabase Cloud")
+    else:
+        st.info("💾 Database: Local SQLite")
 
 st.divider()
 
-render_dashboard(df, employees, today_date_str())
+# Navigation Tabs
+nav_tab1, nav_tab2 = st.tabs(["🕒 Employee Punch", "📊 Admin & Payroll Dashboard"])
 
-if st.button("🔄 Refresh"):
-    st.rerun()
+with nav_tab1:
+    render_punch_section()
+
+with nav_tab2:
+    render_admin_dashboard()
