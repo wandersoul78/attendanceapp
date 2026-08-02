@@ -1,7 +1,7 @@
 """
 db.py
 Database interaction module supporting both Supabase (Cloud PostgreSQL)
-and SQLite (Local fallback).
+and SQLite (Local fallback). Includes graceful exception handling for missing tables.
 """
 
 import os
@@ -132,29 +132,36 @@ def load_employees() -> list[dict]:
     """Fetch all active employees with their currently effective salary."""
     init_db()
     if is_supabase_configured():
-        supabase = get_supabase_client()
-        emp_res = supabase.table("employees").select("*").order("name").execute()
-        employees = emp_res.data or []
+        try:
+            supabase = get_supabase_client()
+            emp_res = supabase.table("employees").select("*").order("name").execute()
+            employees = emp_res.data or []
 
-        sal_res = supabase.table("employee_salary_history").select("*").is_("effective_to", "null").execute()
-        sal_map = {r["employee_id"]: float(r["monthly_salary"]) for r in (sal_res.data or [])}
+            sal_res = supabase.table("employee_salary_history").select("*").is_("effective_to", "null").execute()
+            sal_map = {r["employee_id"]: float(r["monthly_salary"]) for r in (sal_res.data or [])}
 
-        for emp in employees:
-            emp["current_salary"] = sal_map.get(emp["id"], 0.0)
-        return employees
+            for emp in employees:
+                emp["current_salary"] = sal_map.get(emp["id"], 0.0)
+            return employees
+        except Exception:
+            return []
 
     conn = get_sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT e.id, e.name, s.monthly_salary as current_salary
-        FROM employees e
-        LEFT JOIN employee_salary_history s 
-            ON e.id = s.employee_id AND (s.effective_to IS NULL OR s.effective_to = '')
-        ORDER BY e.name
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    try:
+        cursor.execute("""
+            SELECT e.id, e.name, s.monthly_salary as current_salary
+            FROM employees e
+            LEFT JOIN employee_salary_history s 
+                ON e.id = s.employee_id AND (s.effective_to IS NULL OR s.effective_to = '')
+            ORDER BY e.name
+        """)
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    except Exception:
+        return []
+    finally:
+        conn.close()
 
 
 def add_employee(name: str, monthly_salary: float, effective_from: str = None) -> bool:
@@ -275,30 +282,37 @@ def update_employee_salary(employee_id: str, new_salary: float, effective_from: 
 def get_employee_salary_for_month(employee_id: str, target_date_str: str) -> float:
     """Find effective salary for an employee on a given target date (preserves historical data)."""
     if is_supabase_configured():
-        supabase = get_supabase_client()
-        res = supabase.table("employee_salary_history") \
-            .select("monthly_salary") \
-            .eq("employee_id", employee_id) \
-            .lte("effective_from", target_date_str) \
-            .order("effective_from", desc=True) \
-            .limit(1) \
-            .execute()
-        if res.data:
-            return float(res.data[0]["monthly_salary"])
-        return 0.0
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("employee_salary_history") \
+                .select("monthly_salary") \
+                .eq("employee_id", employee_id) \
+                .lte("effective_from", target_date_str) \
+                .order("effective_from", desc=True) \
+                .limit(1) \
+                .execute()
+            if res.data:
+                return float(res.data[0]["monthly_salary"])
+            return 0.0
+        except Exception:
+            return 0.0
 
     conn = get_sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT monthly_salary 
-        FROM employee_salary_history
-        WHERE employee_id = ? AND effective_from <= ?
-        ORDER BY effective_from DESC
-        LIMIT 1
-    """, (employee_id, target_date_str))
-    row = cursor.fetchone()
-    conn.close()
-    return float(row["monthly_salary"]) if row else 0.0
+    try:
+        cursor.execute("""
+            SELECT monthly_salary 
+            FROM employee_salary_history
+            WHERE employee_id = ? AND effective_from <= ?
+            ORDER BY effective_from DESC
+            LIMIT 1
+        """, (employee_id, target_date_str))
+        row = cursor.fetchone()
+        return float(row["monthly_salary"]) if row else 0.0
+    except Exception:
+        return 0.0
+    finally:
+        conn.close()
 
 
 # ============================================================
@@ -308,24 +322,31 @@ def get_employee_salary_for_month(employee_id: str, target_date_str: str) -> flo
 def get_employee_status_today(employee_id: str, date_str: str) -> dict:
     """Return today's check_in and check_out record for employee, or None."""
     if is_supabase_configured():
-        supabase = get_supabase_client()
-        res = supabase.table("attendance") \
-            .select("*") \
-            .eq("employee_id", employee_id) \
-            .eq("date", date_str) \
-            .execute()
-        if res.data:
-            return res.data[0]
-        return None
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("attendance") \
+                .select("*") \
+                .eq("employee_id", employee_id) \
+                .eq("date", date_str) \
+                .execute()
+            if res.data:
+                return res.data[0]
+            return None
+        except Exception:
+            return None
 
     conn = get_sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT * FROM attendance WHERE employee_id = ? AND date = ?
-    """, (employee_id, date_str))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
+    try:
+        cursor.execute("""
+            SELECT * FROM attendance WHERE employee_id = ? AND date = ?
+        """, (employee_id, date_str))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+    finally:
+        conn.close()
 
 
 def punch_in(employee_id: str, date_str: str, check_in_iso: str) -> bool:
@@ -424,43 +445,50 @@ def load_attendance_df(year_month: str = None) -> pd.DataFrame:
     """Load attendance DataFrame with joined Employee names."""
     init_db()
     if is_supabase_configured():
-        supabase = get_supabase_client()
-        query = supabase.table("attendance").select("*, employees(name)")
-        if year_month:
-            start_date = f"{year_month}-01"
-            query = query.gte("date", start_date)
-        res = query.execute()
-        data = res.data or []
-        if not data:
+        try:
+            supabase = get_supabase_client()
+            query = supabase.table("attendance").select("*, employees(name)")
+            if year_month:
+                start_date = f"{year_month}-01"
+                query = query.gte("date", start_date)
+            res = query.execute()
+            data = res.data or []
+            if not data:
+                return pd.DataFrame(columns=["id", "employee_id", "employee_name", "date", "check_in", "check_out", "overtime_hours"])
+            
+            flat_data = []
+            for r in data:
+                emp_name = r.get("employees", {}).get("name", "Unknown") if r.get("employees") else "Unknown"
+                flat_data.append({
+                    "id": r.get("id"),
+                    "employee_id": r.get("employee_id"),
+                    "employee_name": emp_name,
+                    "date": r.get("date"),
+                    "check_in": r.get("check_in"),
+                    "check_out": r.get("check_out"),
+                    "overtime_hours": float(r.get("overtime_hours") or 0.0)
+                })
+            return pd.DataFrame(flat_data)
+        except Exception:
             return pd.DataFrame(columns=["id", "employee_id", "employee_name", "date", "check_in", "check_out", "overtime_hours"])
-        
-        flat_data = []
-        for r in data:
-            emp_name = r.get("employees", {}).get("name", "Unknown") if r.get("employees") else "Unknown"
-            flat_data.append({
-                "id": r.get("id"),
-                "employee_id": r.get("employee_id"),
-                "employee_name": emp_name,
-                "date": r.get("date"),
-                "check_in": r.get("check_in"),
-                "check_out": r.get("check_out"),
-                "overtime_hours": float(r.get("overtime_hours") or 0.0)
-            })
-        return pd.DataFrame(flat_data)
 
     conn = get_sqlite_conn()
-    query = """
-        SELECT a.id, a.employee_id, e.name as employee_name, a.date, a.check_in, a.check_out, a.overtime_hours
-        FROM attendance a
-        JOIN employees e ON a.employee_id = e.id
-    """
-    if year_month:
-        query += f" WHERE a.date LIKE '{year_month}%'"
-    query += " ORDER BY a.date DESC"
-    
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return df
+    try:
+        query = """
+            SELECT a.id, a.employee_id, e.name as employee_name, a.date, a.check_in, a.check_out, a.overtime_hours
+            FROM attendance a
+            JOIN employees e ON a.employee_id = e.id
+        """
+        if year_month:
+            query += f" WHERE a.date LIKE '{year_month}%'"
+        query += " ORDER BY a.date DESC"
+        
+        df = pd.read_sql_query(query, conn)
+        return df
+    except Exception:
+        return pd.DataFrame(columns=["id", "employee_id", "employee_name", "date", "check_in", "check_out", "overtime_hours"])
+    finally:
+        conn.close()
 
 
 # ============================================================
@@ -470,18 +498,25 @@ def load_attendance_df(year_month: str = None) -> pd.DataFrame:
 def get_monthly_extra_holidays(year_month: str) -> int:
     """Get global extra holiday count for a given month 'YYYY-MM'."""
     if is_supabase_configured():
-        supabase = get_supabase_client()
-        res = supabase.table("monthly_holidays").select("other_holidays_count").eq("year_month", year_month).execute()
-        if res.data:
-            return int(res.data[0]["other_holidays_count"])
-        return 0
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("monthly_holidays").select("other_holidays_count").eq("year_month", year_month).execute()
+            if res.data:
+                return int(res.data[0]["other_holidays_count"])
+            return 0
+        except Exception:
+            return 0
 
     conn = get_sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT other_holidays_count FROM monthly_holidays WHERE year_month = ?", (year_month,))
-    row = cursor.fetchone()
-    conn.close()
-    return int(row["other_holidays_count"]) if row else 0
+    try:
+        cursor.execute("SELECT other_holidays_count FROM monthly_holidays WHERE year_month = ?", (year_month,))
+        row = cursor.fetchone()
+        return int(row["other_holidays_count"]) if row else 0
+    except Exception:
+        return 0
+    finally:
+        conn.close()
 
 
 def set_monthly_extra_holidays(year_month: str, count: int) -> bool:
@@ -512,18 +547,25 @@ def get_weekly_off_overrides(year_month: str) -> dict[str, int]:
     """Get employee_id -> weekly_offs override mapping for a given month."""
     init_db()
     if is_supabase_configured():
-        supabase = get_supabase_client()
-        res = supabase.table("employee_weekly_off_overrides").select("employee_id, weekly_offs").eq("year_month", year_month).execute()
-        if res.data:
-            return {r["employee_id"]: int(r["weekly_offs"]) for r in res.data}
-        return {}
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("employee_weekly_off_overrides").select("employee_id, weekly_offs").eq("year_month", year_month).execute()
+            if res.data:
+                return {r["employee_id"]: int(r["weekly_offs"]) for r in res.data}
+            return {}
+        except Exception:
+            return {}
 
     conn = get_sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT employee_id, weekly_offs FROM employee_weekly_off_overrides WHERE year_month = ?", (year_month,))
-    rows = cursor.fetchall()
-    conn.close()
-    return {row["employee_id"]: int(row["weekly_offs"]) for row in rows}
+    try:
+        cursor.execute("SELECT employee_id, weekly_offs FROM employee_weekly_off_overrides WHERE year_month = ?", (year_month,))
+        rows = cursor.fetchall()
+        return {row["employee_id"]: int(row["weekly_offs"]) for row in rows}
+    except Exception:
+        return {}
+    finally:
+        conn.close()
 
 
 def set_weekly_off_override(employee_id: str, year_month: str, weekly_offs: int) -> bool:
@@ -555,18 +597,25 @@ def get_extra_holiday_overrides(year_month: str) -> dict[str, int]:
     """Get employee_id -> extra_holidays override mapping for a given month."""
     init_db()
     if is_supabase_configured():
-        supabase = get_supabase_client()
-        res = supabase.table("employee_extra_holiday_overrides").select("employee_id, extra_holidays").eq("year_month", year_month).execute()
-        if res.data:
-            return {r["employee_id"]: int(r["extra_holidays"]) for r in res.data}
-        return {}
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("employee_extra_holiday_overrides").select("employee_id, extra_holidays").eq("year_month", year_month).execute()
+            if res.data:
+                return {r["employee_id"]: int(r["extra_holidays"]) for r in res.data}
+            return {}
+        except Exception:
+            return {}
 
     conn = get_sqlite_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT employee_id, extra_holidays FROM employee_extra_holiday_overrides WHERE year_month = ?", (year_month,))
-    rows = cursor.fetchall()
-    conn.close()
-    return {row["employee_id"]: int(row["extra_holidays"]) for row in rows}
+    try:
+        cursor.execute("SELECT employee_id, extra_holidays FROM employee_extra_holiday_overrides WHERE year_month = ?", (year_month,))
+        rows = cursor.fetchall()
+        return {row["employee_id"]: int(row["extra_holidays"]) for row in rows}
+    except Exception:
+        return {}
+    finally:
+        conn.close()
 
 
 def set_extra_holiday_override(employee_id: str, year_month: str, extra_holidays: int) -> bool:
