@@ -1,7 +1,7 @@
 """
 app.py
 Entry point for the Company Attendance & Payroll Streamlit Application.
-Run locally with: streamlit run app.py
+Optimized with mobile-first CSS styling and PIN protection.
 """
 
 import streamlit as st
@@ -15,6 +15,43 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed"
 )
+
+# Custom Mobile-First CSS Styling
+st.markdown("""
+<style>
+/* Hide Streamlit Header, Footer, and Main Menu */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Remove top padding for cleaner mobile display */
+.block-container {
+    padding-top: 1.5rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 600px !important;
+}
+
+/* Touch-Friendly Large Mobile Buttons */
+div.stButton > button:first-child {
+    font-size: 20px !important;
+    font-weight: 700 !important;
+    padding: 16px 20px !important;
+    border-radius: 12px !important;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.12) !important;
+}
+
+/* Dropdown Select Box styling for mobile */
+div[data-baseweb="select"] {
+    font-size: 18px !important;
+    border-radius: 10px !important;
+}
+
+/* Subheaders & Metric text */
+h3 {
+    font-size: 24px !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # Fetch admin PIN from secrets or use default '1234'
 ADMIN_PIN = st.secrets.get("ADMIN_PIN", "1234")

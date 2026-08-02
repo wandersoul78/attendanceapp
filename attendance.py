@@ -2,7 +2,7 @@
 attendance.py
 Employee attendance check-in and check-out interface with Hindi (Devanagari) labels,
 IST timezone support, 30-minute check-in rounding, unclosed punch cleanup,
-and continuous/marathon shift support.
+continuous/marathon shift support, and mobile-first card widgets.
 """
 
 from datetime import datetime, timezone, timedelta
@@ -84,15 +84,30 @@ def render_punch_section():
     out_time_disp = format_iso_to_time(record.get("check_out")) if record else "—"
     ot_hours = record.get("overtime_hours", 0.0) if record else 0.0
 
+    # Mobile Card Widgets for IN and OUT status
     col_in, col_out = st.columns(2)
     with col_in:
-        st.markdown("**आने का समय (IN)**")
-        st.subheader(in_time_disp)
+        st.markdown(
+            f"""
+            <div style="background-color: #1e293b; padding: 16px; border-radius: 12px; text-align: center; border: 1px solid #334155; margin-bottom: 10px;">
+                <div style="color: #94a3b8; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">आने का समय (IN)</div>
+                <div style="color: #38bdf8; font-size: 26px; font-weight: 700; margin-top: 6px;">{in_time_disp}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     with col_out:
-        st.markdown("**जाने का समय (OUT)**")
-        st.subheader(out_time_disp)
+        st.markdown(
+            f"""
+            <div style="background-color: #1e293b; padding: 16px; border-radius: 12px; text-align: center; border: 1px solid #334155; margin-bottom: 10px;">
+                <div style="color: #94a3b8; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">जाने का समय (OUT)</div>
+                <div style="color: #fb7185; font-size: 26px; font-weight: 700; margin-top: 6px;">{out_time_disp}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-    st.divider()
+    st.write("")
 
     # Flow 1: Not checked in yet today
     if record is None or not record.get("check_in"):
