@@ -1,11 +1,11 @@
 """
 admin.py
 Admin and Payroll Management Interface for Streamlit.
-Includes Employee directory, salary history updates, name edits, employee deletion,
-holiday & weekly off overrides, and comprehensive monthly wage export.
+Includes Attendance Log Editor, Employee directory, salary history updates, name edits,
+employee deletion, holiday & weekly off overrides, and comprehensive monthly wage export.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, time, timezone, timedelta
 import streamlit as st
 import pandas as pd
 from db import (
@@ -17,14 +17,55 @@ from db import (
     get_monthly_extra_holidays,
     set_monthly_extra_holidays,
     set_weekly_off_override,
+    get_employee_status_today,
+    update_attendance_record,
+    delete_attendance_record,
+    load_attendance_df,
 )
-from payroll import generate_monthly_payroll, count_tuesdays_in_month
+from payroll import generate_monthly_payroll, count_tuesdays_in_month, calculate_overtime_hours
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def format_iso_to_time_display(iso_str: str) -> str:
+    """Format ISO string to readable IST time or dash."""
+    if not iso_str:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc).astimezone(IST)
+        else:
+            dt = dt.astimezone(IST)
+        return dt.strftime("%I:%M %p")
+    except Exception:
+        return iso_str
+
+
+def parse_iso_to_time_obj(iso_str: str) -> time:
+    """Parse ISO string to Python time object in IST."""
+    if not iso_str:
+        return time(9, 0)
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc).astimezone(IST)
+        else:
+            dt = dt.astimezone(IST)
+        return dt.time()
+    except Exception:
+        return time(9, 0)
 
 
 def render_admin_dashboard():
-    st.title("📊 Admin & Payroll Dashboard")
+    st.title("📊 Admin Dashboard")
 
-    tab1, tab2, tab3 = st.tabs(["💰 Payroll Report", "👥 Employee Management", "🌴 Holidays & Weekly Off Adjustments"])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "💰 Payroll Report",
+        "✏️ Edit Attendance Logs",
+        "👥 Employee Management",
+        "🌴 Holidays & Weekly Offs"
+    ])
 
     # ----------------------------------------------------
     # TAB 1: PAYROLL REPORT
@@ -51,7 +92,7 @@ def render_admin_dashboard():
         st.info(
             f"📅 **Calendar Default for {datetime(2000, selected_month, 1).strftime('%B')} {selected_year}**: "
             f"Auto Tuesdays: **{tuesdays}** | Extra Holidays: **{extra_holidays}** "
-            f"*(You can edit weekly off count per employee under 'Holidays & Weekly Off Adjustments')*"
+            f"*(You can edit weekly off count per employee under 'Holidays & Weekly Offs')*"
         )
 
         payroll_df = generate_monthly_payroll(selected_year, selected_month)
@@ -91,9 +132,85 @@ def render_admin_dashboard():
             )
 
     # ----------------------------------------------------
-    # TAB 2: EMPLOYEE MANAGEMENT
+    # TAB 2: EDIT ATTENDANCE LOGS
     # ----------------------------------------------------
     with tab2:
+        st.subheader("✏️ Add or Edit Attendance Records")
+        st.caption("Manually adjust check-in/check-out times, add missing punches, or delete mistaken records for any employee.")
+
+        employees = load_employees()
+        if not employees:
+            st.warning("No employees registered.")
+        else:
+            emp_names = [e["name"] for e in employees]
+            emp_map = {e["name"]: e["id"] for e in employees}
+
+            col_ed_emp, col_ed_date = st.columns(2)
+            with col_ed_emp:
+                edit_emp_name = st.selectbox("Select Employee", emp_names, key="edit_att_emp_select")
+                edit_emp_id = emp_map[edit_emp_name]
+            with col_ed_date:
+                edit_date = st.date_input("Select Date", value=today, key="edit_att_date_select")
+                edit_date_str = edit_date.isoformat()
+
+            record = get_employee_status_today(edit_emp_id, edit_date_str)
+
+            if record:
+                st.info(
+                    f"📌 Existing Record for **{edit_emp_name}** on **{edit_date_str}**: "
+                    f"IN: **{format_iso_to_time_display(record.get('check_in'))}** | "
+                    f"OUT: **{format_iso_to_time_display(record.get('check_out'))}** | "
+                    f"Overtime: **{record.get('overtime_hours', 0.0)} hrs**"
+                )
+            else:
+                st.warning(f"No attendance record found for **{edit_emp_name}** on **{edit_date_str}**.")
+
+            st.divider()
+
+            with st.form("edit_attendance_form"):
+                st.markdown("#### 🕒 Set Check-IN and Check-OUT Times")
+                
+                initial_in_time = parse_iso_to_time_obj(record.get("check_in")) if record else time(9, 0)
+                initial_out_time = parse_iso_to_time_obj(record.get("check_out")) if record and record.get("check_out") else time(17, 0)
+                has_checkout_initial = bool(record and record.get("check_out"))
+
+                col_in_t, col_out_t = st.columns(2)
+                with col_in_t:
+                    new_in_time = st.time_input("Check-IN Time", value=initial_in_time)
+                with col_out_t:
+                    include_checkout = st.checkbox("Include Check-OUT", value=has_checkout_initial)
+                    new_out_time = st.time_input("Check-OUT Time", value=initial_out_time)
+
+                submit_att_edit = st.form_submit_button("Save Attendance Log", type="primary", use_container_width=True)
+
+                if submit_att_edit:
+                    in_dt = datetime.combine(edit_date, new_in_time, tzinfo=IST)
+                    in_iso = in_dt.isoformat()
+
+                    out_iso = None
+                    ot_final = 0.0
+
+                    if include_checkout:
+                        out_dt = datetime.combine(edit_date, new_out_time, tzinfo=IST)
+                        out_iso = out_dt.isoformat()
+                        ot_final = calculate_overtime_hours(out_dt)
+
+                    update_attendance_record(edit_emp_id, edit_date_str, in_iso, out_iso, ot_final)
+                    st.success(f"Successfully saved attendance for {edit_emp_name} on {edit_date_str}!")
+                    st.rerun()
+
+            if record:
+                st.divider()
+                with st.expander("🗑️ Delete Attendance Record for this Date"):
+                    if st.button(f"Delete Attendance on {edit_date_str}", type="primary"):
+                        delete_attendance_record(edit_emp_id, edit_date_str)
+                        st.success(f"Deleted attendance record for {edit_emp_name} on {edit_date_str}.")
+                        st.rerun()
+
+    # ----------------------------------------------------
+    # TAB 3: EMPLOYEE MANAGEMENT
+    # ----------------------------------------------------
+    with tab3:
         st.subheader("Manage Employees & Salaries")
 
         employees = load_employees()
@@ -178,9 +295,9 @@ def render_admin_dashboard():
                                 st.warning("Please check the confirmation box first.")
 
     # ----------------------------------------------------
-    # TAB 3: HOLIDAYS & WEEKLY OFF ADJUSTMENTS
+    # TAB 4: HOLIDAYS & WEEKLY OFF ADJUSTMENTS
     # ----------------------------------------------------
-    with tab3:
+    with tab4:
         st.subheader("Configure Extra Holidays & Employee Weekly Offs")
 
         col_adj_y, col_adj_m = st.columns(2)

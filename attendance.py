@@ -3,19 +3,29 @@ attendance.py
 Employee attendance check-in and check-out interface with IST timezone support.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import streamlit as st
 from db import load_employees, get_employee_status_today, punch_in, punch_out
 from payroll import calculate_overtime_hours
 from utils import now_display_datetime, get_ist_now, today_date_str
 
+# Indian Standard Time offset (+05:30)
+IST = timezone(timedelta(hours=5, minutes=30))
+
 
 def format_iso_to_time(iso_str: str) -> str:
-    """Format ISO timestamp string to readable 12-hour time (e.g. 03:15 PM IST)."""
+    """
+    Format ISO timestamp string to readable 12-hour time in IST (e.g. 03:15 PM).
+    Converts both legacy UTC timestamps and IST timestamps accurately.
+    """
     if not iso_str:
         return "—"
     try:
         dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc).astimezone(IST)
+        else:
+            dt = dt.astimezone(IST)
         return dt.strftime("%I:%M %p")
     except Exception:
         return iso_str

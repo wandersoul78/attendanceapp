@@ -289,7 +289,7 @@ def get_employee_salary_for_month(employee_id: str, target_date_str: str) -> flo
 
 
 # ============================================================
-# ATTENDANCE PUNCHING
+# ATTENDANCE PUNCHING & ADMIN EDITING
 # ============================================================
 
 def get_employee_status_today(employee_id: str, date_str: str) -> dict:
@@ -357,6 +357,51 @@ def punch_out(employee_id: str, date_str: str, check_out_iso: str, overtime_hour
         SET check_out = ?, overtime_hours = ?
         WHERE employee_id = ? AND date = ?
     """, (check_out_iso, overtime_hours, employee_id, date_str))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def update_attendance_record(employee_id: str, date_str: str, check_in_iso: str, check_out_iso: str, overtime_hours: float) -> bool:
+    """Upsert full attendance record (Admin Edit)."""
+    record_id = generate_id()
+    if is_supabase_configured():
+        supabase = get_supabase_client()
+        supabase.table("attendance").upsert({
+            "id": record_id,
+            "employee_id": employee_id,
+            "date": date_str,
+            "check_in": check_in_iso,
+            "check_out": check_out_iso,
+            "overtime_hours": overtime_hours
+        }, on_conflict="employee_id,date").execute()
+        return True
+
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO attendance (id, employee_id, date, check_in, check_out, overtime_hours)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(employee_id, date) DO UPDATE SET 
+            check_in = excluded.check_in,
+            check_out = excluded.check_out,
+            overtime_hours = excluded.overtime_hours
+    """, (record_id, employee_id, date_str, check_in_iso, check_out_iso, overtime_hours))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def delete_attendance_record(employee_id: str, date_str: str) -> bool:
+    """Delete an attendance record for an employee on a date (Admin Delete)."""
+    if is_supabase_configured():
+        supabase = get_supabase_client()
+        supabase.table("attendance").delete().eq("employee_id", employee_id).eq("date", date_str).execute()
+        return True
+
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM attendance WHERE employee_id = ? AND date = ?", (employee_id, date_str))
     conn.commit()
     conn.close()
     return True
