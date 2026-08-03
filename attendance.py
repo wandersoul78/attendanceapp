@@ -112,9 +112,8 @@ def render_punch_section():
     # Flow 1: Not checked in yet today
     if record is None or not record.get("check_in"):
         if st.button("📥 आने का समय दर्ज करें (CHECK IN)", use_container_width=True, type="primary"):
-            rounded_in_dt = round_check_in_time(now_dt)
-            punch_in(selected_id, today_str, rounded_in_dt.isoformat())
-            st.success(f"{selected_name} का आने का समय {rounded_in_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है!")
+            punch_in(selected_id, today_str, now_dt.isoformat())
+            st.success(f"{selected_name} का आने का समय {now_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है!")
             st.rerun()
 
     # Flow 2: Checked in, but not checked out yet

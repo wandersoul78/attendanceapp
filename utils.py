@@ -22,7 +22,7 @@ def today_date_str() -> str:
 
 def round_check_in_time(dt: datetime) -> datetime:
     """
-    Rounds check-in time according to 30-minute threshold:
+    Rounds check-in time according to 30-minute threshold for background calculations:
     - Minutes > 30 (e.g. 8:31 AM to 8:59 AM) -> rounded UP to next hour (9:00 AM).
     - Minutes <= 30 (e.g. 8:00 AM to 8:30 AM) -> rounded to current hour (8:00 AM).
     """
