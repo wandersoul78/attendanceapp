@@ -130,6 +130,12 @@ def generate_id() -> str:
 # EMPLOYEE & SALARY MANAGEMENT
 # ============================================================
 
+def clear_employee_cache():
+    """Clear cached employee directory data."""
+    load_employees.clear()
+
+
+@st.cache_data(ttl=60)
 def load_employees() -> list[dict]:
     """Fetch all active employees with their currently effective salary."""
     init_db()
@@ -188,6 +194,7 @@ def add_employee(name: str, monthly_salary: float, effective_from: str = None) -
             "effective_from": effective_from,
             "effective_to": None
         }).execute()
+        clear_employee_cache()
         return True
 
     conn = get_sqlite_conn()
@@ -199,6 +206,7 @@ def add_employee(name: str, monthly_salary: float, effective_from: str = None) -
             VALUES (?, ?, ?, ?, NULL)
         """, (sal_id, emp_id, monthly_salary, effective_from))
         conn.commit()
+        clear_employee_cache()
         return True
     except sqlite3.IntegrityError:
         return False
@@ -215,6 +223,7 @@ def update_employee_name(employee_id: str, new_name: str) -> bool:
     if is_supabase_configured():
         supabase = get_supabase_client()
         supabase.table("employees").update({"name": new_name}).eq("id", employee_id).execute()
+        clear_employee_cache()
         return True
 
     conn = get_sqlite_conn()
@@ -222,6 +231,7 @@ def update_employee_name(employee_id: str, new_name: str) -> bool:
     cursor.execute("UPDATE employees SET name = ? WHERE id = ?", (new_name, employee_id))
     conn.commit()
     conn.close()
+    clear_employee_cache()
     return True
 
 
@@ -230,6 +240,7 @@ def delete_employee(employee_id: str) -> bool:
     if is_supabase_configured():
         supabase = get_supabase_client()
         supabase.table("employees").delete().eq("id", employee_id).execute()
+        clear_employee_cache()
         return True
 
     conn = get_sqlite_conn()
@@ -242,6 +253,7 @@ def delete_employee(employee_id: str) -> bool:
     cursor.execute("DELETE FROM employee_extra_holiday_overrides WHERE employee_id = ?", (employee_id,))
     conn.commit()
     conn.close()
+    clear_employee_cache()
     return True
 
 
@@ -262,6 +274,7 @@ def update_employee_salary(employee_id: str, new_salary: float, effective_from: 
             "effective_from": effective_from,
             "effective_to": None
         }).execute()
+        clear_employee_cache()
         return True
 
     conn = get_sqlite_conn()
@@ -278,6 +291,7 @@ def update_employee_salary(employee_id: str, new_salary: float, effective_from: 
     """, (sal_id, employee_id, new_salary, effective_from))
     conn.commit()
     conn.close()
+    clear_employee_cache()
     return True
 
 

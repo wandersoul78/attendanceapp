@@ -70,7 +70,8 @@ def render_punch_section():
         
         ot_today = calculate_overtime_hours(now_dt)
         if st.button("📤 लगातार ड्यूटी का Check OUT दर्ज करें (Continuous Shift Punch Out)", use_container_width=True, type="primary"):
-            process_continuous_overnight_punchout(selected_id, past_unclosed['date'], today_str, now_dt, ot_today)
+            with st.spinner("हाजिरी दर्ज हो रही है... / Processing..."):
+                process_continuous_overnight_punchout(selected_id, past_unclosed['date'], today_str, now_dt, ot_today)
             st.success(
                 f"✅ {selected_name} की लगातार ड्यूटी की हाजिरी दर्ज हो गई है! "
                 f"कल की ड्यूटी + 16 घंटे ओवर टाइम और आज ({today_str}) की पूरी हाजिरी अपने आप जुड़ गई है।"
@@ -112,7 +113,8 @@ def render_punch_section():
     # Flow 1: Not checked in yet today
     if record is None or not record.get("check_in"):
         if st.button("📥 आने का समय दर्ज करें (CHECK IN)", use_container_width=True, type="primary"):
-            punch_in(selected_id, today_str, now_dt.isoformat())
+            with st.spinner("आने का समय दर्ज हो रहा है... / Recording Check-In..."):
+                punch_in(selected_id, today_str, now_dt.isoformat())
             st.success(f"{selected_name} का आने का समय {now_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है!")
             st.rerun()
 
@@ -120,11 +122,12 @@ def render_punch_section():
     elif record.get("check_in") and not record.get("check_out"):
         ot_projected = calculate_overtime_hours(now_dt)
         if ot_projected > 0:
-            st.info(f"⏳ अभी जाने का समय दर्ज करने पर **{ot_projected:.1f} घंटे ओवरटाइम** दर्ज होगा।")
+            st.info(f"⏳ अभी जाने का समय दर्ज करने पर **{ot_projected:.1f} घंटे overtime** दर्ज होगा।")
 
         if st.button("📤 जाने का समय दर्ज करें (CHECK OUT)", use_container_width=True, type="primary"):
-            ot_hours_final = calculate_overtime_hours(now_dt)
-            punch_out(selected_id, today_str, now_dt.isoformat(), ot_hours_final)
+            with st.spinner("जाने का समय दर्ज हो रहा है... / Recording Check-Out..."):
+                ot_hours_final = calculate_overtime_hours(now_dt)
+                punch_out(selected_id, today_str, now_dt.isoformat(), ot_hours_final)
             st.success(f"{selected_name} का जाने का समय {now_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है (ओवरटाइम: {ot_hours_final} घंटे)!")
             st.rerun()
 

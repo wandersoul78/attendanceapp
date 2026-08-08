@@ -59,3 +59,41 @@ CREATE TABLE IF NOT EXISTS employee_extra_holiday_overrides (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(employee_id, year_month)
 );
+
+-- ============================================================
+-- ROW LEVEL SECURITY (RLS) & POLICIES FOR SUPABASE
+-- Run these commands in Supabase SQL Editor to enable RLS without breaking access.
+-- ============================================================
+
+-- Enable RLS on all 6 tables
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employee_salary_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE monthly_holidays ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employee_weekly_off_overrides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employee_extra_holiday_overrides ENABLE ROW LEVEL SECURITY;
+
+-- 1. Employees Policies
+DROP POLICY IF EXISTS "Allow full access on employees" ON employees;
+CREATE POLICY "Allow full access on employees" ON employees FOR ALL USING (true) WITH CHECK (true);
+
+-- 2. Employee Salary History Policies
+DROP POLICY IF EXISTS "Allow full access on employee_salary_history" ON employee_salary_history;
+CREATE POLICY "Allow full access on employee_salary_history" ON employee_salary_history FOR ALL USING (true) WITH CHECK (true);
+
+-- 3. Attendance Policies
+DROP POLICY IF EXISTS "Allow full access on attendance" ON attendance;
+CREATE POLICY "Allow full access on attendance" ON attendance FOR ALL USING (true) WITH CHECK (true);
+
+-- 4. Monthly Holidays Policies
+DROP POLICY IF EXISTS "Allow full access on monthly_holidays" ON monthly_holidays;
+CREATE POLICY "Allow full access on monthly_holidays" ON monthly_holidays FOR ALL USING (true) WITH CHECK (true);
+
+-- 5. Employee Weekly Off Overrides Policies
+DROP POLICY IF EXISTS "Allow full access on employee_weekly_off_overrides" ON employee_weekly_off_overrides;
+CREATE POLICY "Allow full access on employee_weekly_off_overrides" ON employee_weekly_off_overrides FOR ALL USING (true) WITH CHECK (true);
+
+-- 6. Employee Extra Holiday Overrides Policies
+DROP POLICY IF EXISTS "Allow full access on employee_extra_holiday_overrides" ON employee_extra_holiday_overrides;
+CREATE POLICY "Allow full access on employee_extra_holiday_overrides" ON employee_extra_holiday_overrides FOR ALL USING (true) WITH CHECK (true);
+

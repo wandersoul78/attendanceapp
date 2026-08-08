@@ -59,7 +59,14 @@ def parse_iso_to_time_obj(iso_str: str) -> time:
 
 
 def render_admin_dashboard():
-    st.title("📊 Admin Dashboard")
+    col_dash_title, col_dash_exit = st.columns([2.5, 1])
+    with col_dash_title:
+        st.title("📊 Admin Dashboard")
+    with col_dash_exit:
+        st.write("")
+        if st.button("🚪 Exit Admin", key="admin_panel_exit_btn", type="secondary", use_container_width=True):
+            st.session_state.admin_authenticated = False
+            st.rerun()
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "💰 Payroll Report",

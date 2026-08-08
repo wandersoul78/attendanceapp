@@ -75,6 +75,14 @@ with st.sidebar:
 
 # IF Admin is Authenticated -> Show Tabs (Employee Punch & Admin Dashboard)
 if st.session_state.admin_authenticated:
+    col_hdr_left, col_hdr_right = st.columns([2, 1])
+    with col_hdr_left:
+        st.caption("🔑 **Admin Mode Active**")
+    with col_hdr_right:
+        if st.button("🚪 Exit Admin", key="top_exit_admin_btn", use_container_width=True):
+            st.session_state.admin_authenticated = False
+            st.rerun()
+
     nav_tab1, nav_tab2 = st.tabs(["🕒 Employee Punch", "📊 Admin & Payroll Dashboard"])
     with nav_tab1:
         render_punch_section()
