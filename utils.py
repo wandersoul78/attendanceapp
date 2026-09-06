@@ -55,3 +55,21 @@ def pretty_date(iso_date_str: str) -> str:
         return datetime.strptime(iso_date_str, "%Y-%m-%d").strftime("%d %B %Y")
     except (ValueError, TypeError):
         return iso_date_str
+
+
+def format_iso_to_ist_time(iso_str: str) -> str:
+    """
+    Format ISO timestamp string to readable 12-hour time in IST (e.g. '09:30 AM').
+    Handles both UTC and local offsets safely.
+    """
+    if not iso_str:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(str(iso_str))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc).astimezone(IST)
+        else:
+            dt = dt.astimezone(IST)
+        return dt.strftime("%I:%M %p")
+    except Exception:
+        return str(iso_str)

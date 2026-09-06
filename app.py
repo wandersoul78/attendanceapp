@@ -8,6 +8,7 @@ import streamlit as st
 from db import is_supabase_configured
 from attendance import render_punch_section
 from admin import render_admin_dashboard
+from monthly_view import render_employee_monthly_view
 
 st.set_page_config(
     page_title="Attendance Portal",
@@ -24,11 +25,11 @@ st.markdown("""
 footer {visibility: hidden;}
 header {visibility: hidden;}
 
-/* Remove top padding for cleaner mobile display */
+/* Responsive container for clean mobile and desktop table display */
 .block-container {
     padding-top: 1.5rem !important;
     padding-bottom: 2rem !important;
-    max-width: 600px !important;
+    max-width: 900px !important;
 }
 
 /* Touch-Friendly Large Mobile Buttons */
@@ -89,9 +90,13 @@ if st.session_state.admin_authenticated:
     with nav_tab2:
         render_admin_dashboard()
 
-# IF Employee View (Default) -> Show ONLY Employee Punch Screen
+# IF Employee View (Default) -> Show Employee Punch and Monthly Attendance Breakdown
 else:
-    render_punch_section()
+    emp_tab1, emp_tab2 = st.tabs(["🕒 आज की हाजिरी (Daily Punch)", "📅 मासिक हाजिरी (Monthly Attendance)"])
+    with emp_tab1:
+        render_punch_section()
+    with emp_tab2:
+        render_employee_monthly_view(is_admin=False)
 
     st.divider()
     with st.expander("🔑 Admin Login"):

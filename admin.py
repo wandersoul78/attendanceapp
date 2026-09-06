@@ -24,6 +24,7 @@ from db import (
     load_attendance_df,
 )
 from payroll import generate_monthly_payroll, count_tuesdays_in_month, calculate_overtime_hours
+from monthly_view import render_employee_monthly_view
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -68,8 +69,9 @@ def render_admin_dashboard():
             st.session_state.admin_authenticated = False
             st.rerun()
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "💰 Payroll Report",
+        "📅 Employee Monthly Attendance",
         "✏️ Edit Attendance Logs",
         "👥 Employee Management",
         "🌴 Holidays & Weekly Offs"
@@ -140,9 +142,17 @@ def render_admin_dashboard():
             )
 
     # ----------------------------------------------------
-    # TAB 2: EDIT ATTENDANCE LOGS
+    # TAB 2: EMPLOYEE MONTHLY ATTENDANCE
     # ----------------------------------------------------
     with tab2:
+        st.subheader("📅 Individual Employee Monthly Attendance & Working Days")
+        st.caption("Check day-by-day attendance, missed punches (Check-IN without Check-OUT), and transparent working days calculation.")
+        render_employee_monthly_view(is_admin=True)
+
+    # ----------------------------------------------------
+    # TAB 3: EDIT ATTENDANCE LOGS
+    # ----------------------------------------------------
+    with tab3:
         st.subheader("✏️ Add or Edit Attendance Records")
         st.caption("Manually adjust check-in/check-out times, add missing punches, or delete mistaken records for any employee.")
 
@@ -155,10 +165,15 @@ def render_admin_dashboard():
 
             col_ed_emp, col_ed_date = st.columns(2)
             with col_ed_emp:
-                edit_emp_name = st.selectbox("Select Employee", emp_names, key="edit_att_emp_select")
+                default_ed_idx = 0
+                target_emp = st.session_state.get("edit_target_emp")
+                if target_emp and target_emp in emp_names:
+                    default_ed_idx = emp_names.index(target_emp)
+                edit_emp_name = st.selectbox("Select Employee", emp_names, index=default_ed_idx, key="edit_att_emp_select")
                 edit_emp_id = emp_map[edit_emp_name]
             with col_ed_date:
-                edit_date = st.date_input("Select Date", value=today, key="edit_att_date_select")
+                default_ed_date = st.session_state.get("edit_target_date", today)
+                edit_date = st.date_input("Select Date", value=default_ed_date, key="edit_att_date_select")
                 edit_date_str = edit_date.isoformat()
 
             record = get_employee_status_today(edit_emp_id, edit_date_str)
@@ -216,9 +231,9 @@ def render_admin_dashboard():
                         st.rerun()
 
     # ----------------------------------------------------
-    # TAB 3: EMPLOYEE MANAGEMENT
+    # TAB 4: EMPLOYEE MANAGEMENT
     # ----------------------------------------------------
-    with tab3:
+    with tab4:
         st.subheader("Manage Employees & Salaries")
 
         employees = load_employees()
@@ -303,9 +318,9 @@ def render_admin_dashboard():
                                 st.warning("Please check the confirmation box first.")
 
     # ----------------------------------------------------
-    # TAB 4: HOLIDAYS & WEEKLY OFFS (COMBINED)
+    # TAB 5: HOLIDAYS & WEEKLY OFFS (COMBINED)
     # ----------------------------------------------------
-    with tab4:
+    with tab5:
         st.subheader("🌴 Employee Holidays & Weekly Off Adjustments")
 
         col_adj_y, col_adj_m = st.columns(2)

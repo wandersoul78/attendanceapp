@@ -8,6 +8,7 @@ unclosed punch cleanup, and continuous/marathon shift splitting.
 import os
 import sqlite3
 import uuid
+import calendar
 import pandas as pd
 import streamlit as st
 from datetime import datetime, date, time, timezone, timedelta
@@ -561,8 +562,12 @@ def load_attendance_df(year_month: str = None) -> pd.DataFrame:
             supabase = get_supabase_client()
             query = supabase.table("attendance").select("*, employees(name)")
             if year_month:
+                parts = year_month.split("-")
+                y, m = int(parts[0]), int(parts[1])
+                num_days = calendar.monthrange(y, m)[1]
                 start_date = f"{year_month}-01"
-                query = query.gte("date", start_date)
+                end_date = f"{year_month}-{num_days:02d}"
+                query = query.gte("date", start_date).lte("date", end_date)
             res = query.execute()
             data = res.data or []
             if not data:

@@ -99,7 +99,61 @@ def test_tuesdays_count():
     print("[OK] All Tuesdays Count Tests Passed!")
 
 
+def test_employee_monthly_breakdown():
+    from payroll import get_employee_monthly_breakdown
+    from db import add_employee, load_employees, update_attendance_record, delete_employee
+
+    # Ensure at least one test employee exists
+    emps = load_employees()
+    if not emps:
+        add_employee("Test Worker", 30000.0, "2026-01-01")
+        emps = load_employees()
+
+    test_emp = emps[0]
+    test_emp_id = test_emp["id"]
+
+    # Test breakdown for August 2026 (31 days, 4 Tuesdays)
+    res = get_employee_monthly_breakdown(test_emp_id, 2026, 8)
+
+    assert res["total_days_in_month"] == 31, f"Expected 31 days in Aug, got {res['total_days_in_month']}"
+    assert res["year"] == 2026
+    assert res["month"] == 8
+    assert res["month_name"] == "August"
+    assert len(res["days_df"]) == 31, f"Expected 31 rows in days_df, got {len(res['days_df'])}"
+
+    # Check mathematical formula consistency
+    expected_paid_days = res["present_days"] + res["weekly_offs"] + res["extra_holidays"]
+    assert res["total_paid_days"] == expected_paid_days, (
+        f"Paid days formula mismatch: {res['total_paid_days']} != {expected_paid_days}"
+    )
+
+    expected_base_pay = round(res["daily_rate"] * res["total_paid_days"], 2)
+    assert round(res["base_pay"], 2) == expected_base_pay, (
+        f"Base pay formula mismatch: {res['base_pay']} != {expected_base_pay}"
+    )
+
+    expected_gross = round(res["base_pay"] + res["overtime_pay"], 2)
+    assert round(res["total_gross_salary"], 2) == expected_gross, (
+        f"Total gross salary mismatch: {res['total_gross_salary']} != {expected_gross}"
+    )
+
+    # Test improper punch detection:
+    # Insert a record with check_in but NO check_out on 2026-08-05 (past date)
+    update_attendance_record(test_emp_id, "2026-08-05", "2026-08-05T09:00:00+05:30", None, 0.0)
+    res_after = get_employee_monthly_breakdown(test_emp_id, 2026, 8)
+    assert res_after["improper_punch_days"] >= 1, "Failed to detect incomplete/missed check-out punch"
+    assert "2026-08-05" in res_after["improper_dates"], "Failed to flag 2026-08-05 in improper_dates"
+
+    day_5 = res_after["days_df"][res_after["days_df"]["date"] == "2026-08-05"].iloc[0]
+    assert day_5["status_key"] == "MISSING_OUT", f"Expected MISSING_OUT, got {day_5['status_key']}"
+    # Clean up test record so database remains clean
+    delete_employee(test_emp_id)
+
+    print("[OK] All Employee Monthly Breakdown Unit Tests Passed!")
+
+
 if __name__ == "__main__":
     test_check_in_rounding()
     test_overtime_calculation()
     test_tuesdays_count()
+    test_employee_monthly_breakdown()
