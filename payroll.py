@@ -6,8 +6,26 @@ weekly off (Tuesday) counting, manual overrides per employee, and monthly wage r
 
 import math
 import calendar
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 import pandas as pd
+
+# Indian Standard Time (UTC+05:30)
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def format_iso_to_ist_display(iso_str: str) -> str:
+    """Format ISO timestamp string to readable 12-hour time in IST (e.g. '09:30 AM')."""
+    if not iso_str:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(str(iso_str))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc).astimezone(IST)
+        else:
+            dt = dt.astimezone(IST)
+        return dt.strftime("%I:%M %p")
+    except Exception:
+        return str(iso_str)
 from db import (
     load_employees,
     load_attendance_df,
@@ -147,10 +165,8 @@ def get_employee_monthly_breakdown(employee_id: str, year: int, month: int) -> d
       - Absent days
       - Full mathematical breakdown of how Total Paid Days and Salary are calculated.
     """
-    from utils import format_iso_to_ist_time, get_ist_now
-
     year_month = f"{year:04d}-{month:02d}"
-    today = get_ist_now().date()
+    today = datetime.now(IST).date()
 
     # 1. Employee Info & Salary
     employees = load_employees()
@@ -213,8 +229,8 @@ def get_employee_monthly_breakdown(employee_id: str, year: int, month: int) -> d
         has_out = bool(rec is not None and pd.notna(rec.get("check_out")) and str(rec.get("check_out")).strip())
         ot_hours = float(rec.get("overtime_hours") or 0.0) if rec is not None else 0.0
 
-        in_time_str = format_iso_to_ist_time(rec.get("check_in")) if has_in else "—"
-        out_time_str = format_iso_to_ist_time(rec.get("check_out")) if has_out else "—"
+        in_time_str = format_iso_to_ist_display(rec.get("check_in")) if has_in else "—"
+        out_time_str = format_iso_to_ist_display(rec.get("check_out")) if has_out else "—"
 
         status_key = ""
         status_label = ""

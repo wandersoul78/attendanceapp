@@ -6,7 +6,7 @@ and transparent step-by-step wage calculations.
 """
 
 import importlib
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 import streamlit as st
 import pandas as pd
 from db import load_employees
@@ -16,13 +16,14 @@ try:
 except ImportError:
     payroll = importlib.reload(payroll)
     from payroll import get_employee_monthly_breakdown
-from utils import get_ist_now
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
-def render_employee_monthly_view(default_emp_id: str = None, is_admin: bool = False):
+def render_employee_monthly_view(default_emp_id: str = None, is_admin: bool = True):
     """
     Render individual employee monthly attendance breakdown.
-    Can be used within both Admin Dashboard and Employee Portal.
+    Used inside the Admin Dashboard.
     """
     employees = load_employees()
     if not employees:
@@ -43,7 +44,7 @@ def render_employee_monthly_view(default_emp_id: str = None, is_admin: bool = Fa
     # ----------------------------------------------------
     # CONTROLS ROW
     # ----------------------------------------------------
-    today = get_ist_now().date()
+    today = datetime.now(IST).date()
     col_emp, col_y, col_m = st.columns([2, 1, 1.2])
 
     with col_emp:
