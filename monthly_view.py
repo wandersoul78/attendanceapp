@@ -5,11 +5,17 @@ for individual employees. Highlights missing punches, weekly offs, paid holidays
 and transparent step-by-step wage calculations.
 """
 
+import importlib
 from datetime import date, datetime
 import streamlit as st
 import pandas as pd
 from db import load_employees
-from payroll import get_employee_monthly_breakdown
+import payroll
+try:
+    from payroll import get_employee_monthly_breakdown
+except ImportError:
+    payroll = importlib.reload(payroll)
+    from payroll import get_employee_monthly_breakdown
 from utils import get_ist_now
 
 
