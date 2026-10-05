@@ -88,6 +88,21 @@ def test_overtime_calculation():
     dt10 = datetime(2026, 8, 2, 20, 0)
     assert calculate_overtime_hours(dt10) == 3.0, f"Failed at 8:00 PM: {calculate_overtime_hours(dt10)}"
 
+    # Early morning check-in tests:
+    # 7:01 AM IN (rounded to 7:00 AM -> 2 hrs morning OT) + 8:47 PM OUT (4 hrs evening OT) -> 6.0 hrs
+    in_701 = datetime(2026, 9, 9, 7, 1, tzinfo=IST)
+    out_847 = datetime(2026, 9, 9, 20, 47, tzinfo=IST)
+    assert calculate_overtime_hours(out_847, in_701) == 6.0, f"Failed at 7:01 AM to 8:47 PM: {calculate_overtime_hours(out_847, in_701)}"
+
+    # 8:35 AM IN (rounded to 9:00 AM -> 0 morning OT) + 8:47 PM OUT (4 hrs evening OT) -> 4.0 hrs
+    in_835 = datetime(2026, 9, 9, 8, 35, tzinfo=IST)
+    assert calculate_overtime_hours(out_847, in_835) == 4.0, f"Failed at 8:35 AM to 8:47 PM: {calculate_overtime_hours(out_847, in_835)}"
+
+    # 8:15 AM IN (rounded to 8:00 AM -> 1 hr morning OT) + 5:00 PM OUT (0 evening OT) -> 1.0 hr
+    in_815 = datetime(2026, 9, 9, 8, 15, tzinfo=IST)
+    out_500 = datetime(2026, 9, 9, 17, 0, tzinfo=IST)
+    assert calculate_overtime_hours(out_500, in_815) == 1.0, f"Failed at 8:15 AM to 5:00 PM: {calculate_overtime_hours(out_500, in_815)}"
+
     print("[OK] All Overtime Unit Tests Passed!")
 
 

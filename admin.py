@@ -216,7 +216,7 @@ def render_admin_dashboard():
                     if include_checkout:
                         out_dt = datetime.combine(edit_date, new_out_time, tzinfo=IST)
                         out_iso = out_dt.isoformat()
-                        ot_final = calculate_overtime_hours(out_dt)
+                        ot_final = calculate_overtime_hours(out_dt, in_dt)
 
                     update_attendance_record(edit_emp_id, edit_date_str, in_iso, out_iso, ot_final)
                     st.success(f"Successfully saved attendance for {edit_emp_name} on {edit_date_str}!")

@@ -120,13 +120,14 @@ def render_punch_section():
 
     # Flow 2: Checked in, but not checked out yet
     elif record.get("check_in") and not record.get("check_out"):
-        ot_projected = calculate_overtime_hours(now_dt)
+        in_time_val = record.get("check_in")
+        ot_projected = calculate_overtime_hours(now_dt, in_time_val)
         if ot_projected > 0:
             st.info(f"⏳ अभी जाने का समय दर्ज करने पर **{ot_projected:.1f} घंटे overtime** दर्ज होगा।")
 
         if st.button("📤 जाने का समय दर्ज करें (CHECK OUT)", use_container_width=True, type="primary"):
             with st.spinner("जाने का समय दर्ज हो रहा है... / Recording Check-Out..."):
-                ot_hours_final = calculate_overtime_hours(now_dt)
+                ot_hours_final = calculate_overtime_hours(now_dt, in_time_val)
                 punch_out(selected_id, today_str, now_dt.isoformat(), ot_hours_final)
             st.success(f"{selected_name} का जाने का समय {now_dt.strftime('%I:%M %p')} बजे दर्ज हो गया है (ओवरटाइम: {ot_hours_final} घंटे)!")
             st.rerun()

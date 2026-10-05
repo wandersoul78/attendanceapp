@@ -8,6 +8,7 @@ import math
 import calendar
 from datetime import datetime, date, timezone, timedelta
 import pandas as pd
+from utils import round_check_in_time
 
 # Indian Standard Time (UTC+05:30)
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -36,27 +37,67 @@ from db import (
 )
 
 
-def calculate_overtime_hours(check_out_dt: datetime) -> float:
+def calculate_overtime_hours(check_out_dt: datetime, check_in_dt: datetime = None) -> float:
     """
-    Calculates overtime hours based on standard 5:00 PM (17:00) shift end:
-    - 5:00 PM to 5:30 PM (0-30 mins past 5 PM) -> 0 Hours Overtime
-    - 5:31 PM to 6:30 PM -> 1 Hour Overtime
-    - 6:31 PM to 7:30 PM -> 2 Hours Overtime
-    - 7:31 PM to 8:30 PM -> 3 Hours Overtime
-    Formula: If M > 30, OT = ceil((M - 30) / 60)
+    Calculates total overtime hours:
+    1. Morning Overtime (prior to standard 9:00 AM shift start):
+       - Check-in time is rounded using 30-minute threshold:
+         <= 30 mins (e.g. 7:01 AM -> 7:00 AM, 8:15 AM -> 8:00 AM)
+         > 30 mins (e.g. 8:35 AM -> 9:00 AM)
+       - If rounded check-in is before 9:00 AM, OT = (9:00 AM - rounded_check_in) hours.
+    2. Evening Overtime (past standard 5:00 PM / 17:00 shift end):
+       - 5:00 PM to 5:30 PM (0-30 mins past 5 PM) -> 0 Hours Overtime
+       - 5:31 PM to 6:30 PM -> 1 Hour Overtime
+       - 6:31 PM to 7:30 PM -> 2 Hours Overtime
+       - 7:31 PM to 8:30 PM -> 3 Hours Overtime
+       Formula: If M > 30, OT = ceil((M - 30) / 60)
+    Total Overtime = Morning OT + Evening OT
     """
     if check_out_dt is None:
         return 0.0
 
-    shift_end_mins = 17 * 60  # 5:00 PM in minutes from midnight (1020 mins)
+    # Ensure check_out_dt is localized to IST datetime
+    if isinstance(check_out_dt, str):
+        try:
+            check_out_dt = datetime.fromisoformat(check_out_dt)
+        except Exception:
+            return 0.0
+    if check_out_dt.tzinfo is None:
+        check_out_dt = check_out_dt.replace(tzinfo=IST)
+    else:
+        check_out_dt = check_out_dt.astimezone(IST)
+
+    # 1. Morning Overtime Calculation (Before 9:00 AM)
+    morning_ot = 0.0
+    if check_in_dt is not None:
+        if isinstance(check_in_dt, str):
+            try:
+                check_in_dt = datetime.fromisoformat(check_in_dt)
+            except Exception:
+                check_in_dt = None
+        if check_in_dt is not None:
+            if check_in_dt.tzinfo is None:
+                check_in_dt = check_in_dt.replace(tzinfo=IST)
+            else:
+                check_in_dt = check_in_dt.astimezone(IST)
+
+            rounded_in = round_check_in_time(check_in_dt)
+            shift_start_mins = 9 * 60  # 9:00 AM (540 mins)
+            rounded_in_mins = rounded_in.hour * 60 + rounded_in.minute
+
+            if rounded_in_mins < shift_start_mins:
+                morning_ot = max(0.0, (shift_start_mins - rounded_in_mins) / 60.0)
+
+    # 2. Evening Overtime Calculation (Past 5:00 PM)
+    evening_ot = 0.0
+    shift_end_mins = 17 * 60  # 5:00 PM (1020 mins)
     checkout_mins = check_out_dt.hour * 60 + check_out_dt.minute
 
     mins_past_5pm = checkout_mins - shift_end_mins
-    if mins_past_5pm <= 30:
-        return 0.0
+    if mins_past_5pm > 30:
+        evening_ot = float(math.ceil((mins_past_5pm - 30) / 60.0))
 
-    ot_hours = math.ceil((mins_past_5pm - 30) / 60.0)
-    return float(ot_hours)
+    return float(morning_ot + evening_ot)
 
 
 def count_tuesdays_in_month(year: int, month: int) -> int:
