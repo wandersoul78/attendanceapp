@@ -206,6 +206,15 @@ def test_tea_expense():
     c_out_reg = datetime(2026, 9, 9, 17, 0, tzinfo=IST)
     assert calculate_daily_tea_count(c_in_reg, c_out_reg, is_tuesday=False) == 0, "Failed: Regular 9 AM to 5 PM"
 
+    # 9. Incomplete punches with NaN / None / missing check-out (common in pandas DataFrames)
+    nan_val = float('nan')
+    assert calculate_daily_tea_count(check_in_dt=nan_val, check_out_dt=nan_val) == 0, "Failed: NaN in and out"
+    assert calculate_daily_tea_count(check_in_dt="2026-09-09T07:01:00", check_out_dt=nan_val) == 1, "Failed: early in with NaN out"
+    assert calculate_daily_tea_count(check_in_dt=nan_val, check_out_dt="2026-09-09T21:00:00") == 1, "Failed: NaN in with evening out"
+    assert calculate_daily_tea_count(check_in_dt=None, check_out_dt=None) == 0, "Failed: None in and out"
+    assert calculate_overtime_hours(check_out_dt=nan_val, check_in_dt=nan_val) == 0.0, "Failed: OT with NaN"
+    assert calculate_overtime_hours(check_out_dt="2026-09-09T20:47:00", check_in_dt=nan_val) == 4.0, "Failed: OT with evening out and NaN in"
+
     print("[OK] All Tea Expense Unit Tests Passed!")
 
 
