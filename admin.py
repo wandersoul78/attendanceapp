@@ -114,11 +114,13 @@ def render_admin_dashboard():
 
             total_payout = payroll_df["Total Gross Salary"].sum()
             total_ot_hours = payroll_df["Overtime (Hours)"].sum()
+            total_tea = payroll_df["Tea Expense"].sum() if "Tea Expense" in payroll_df.columns else 0.0
 
-            m1, m2, m3 = st.columns(3)
+            m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total Payout", f"₹{total_payout:,.2f}")
             m2.metric("Total Overtime Hours", f"{total_ot_hours:.1f} hrs")
-            m3.metric("Employees Count", len(payroll_df))
+            m3.metric("Total Tea Expense", f"₹{total_tea:,.2f}")
+            m4.metric("Employees Count", len(payroll_df))
 
             st.dataframe(
                 payroll_df[display_cols].style.format({
@@ -126,6 +128,7 @@ def render_admin_dashboard():
                     "Daily Rate": "₹{:,.2f}",
                     "Base Pay": "₹{:,.2f}",
                     "Overtime Pay": "₹{:,.2f}",
+                    "Tea Expense": "₹{:,.2f}",
                     "Total Gross Salary": "₹{:,.2f}",
                 }),
                 use_container_width=True

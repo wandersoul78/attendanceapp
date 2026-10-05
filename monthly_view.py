@@ -151,7 +151,7 @@ def render_employee_monthly_view(default_emp_id: str = None, is_admin: bool = Tr
         st.metric(
             "Gross Salary",
             f"₹{breakdown['total_gross_salary']:,.2f}",
-            help=f"मूल वेतन: ₹{breakdown['base_pay']:,.2f} + ओवरटाइम: ₹{breakdown['overtime_pay']:,.2f}"
+            help=f"Base Pay: ₹{breakdown['base_pay']:,.2f} + Overtime: ₹{breakdown['overtime_pay']:,.2f} + Tea Expense: ₹{breakdown.get('tea_expense', 0.0):,.2f}"
         )
 
     # ----------------------------------------------------
@@ -179,8 +179,9 @@ def render_employee_monthly_view(default_emp_id: str = None, is_admin: bool = Tr
         - **मूल भुगतान (Base Pay)**: $\\text{{₹{breakdown['daily_rate']:,.2f}}} \\times {breakdown['total_paid_days']} \\text{{ days}} = \\mathbf{{\\text{{₹{breakdown['base_pay']:,.2f}}}}}$
         - **प्रति घंटा ओवरटाइम दर (Hourly OT Rate)**: $\\text{{₹{breakdown['daily_rate']:,.2f}}} \\div 8 = \\mathbf{{\\text{{₹{breakdown['hourly_ot_rate']:,.2f} / hr}}}}$
         - **ओवरटाइम भुगतान (Overtime Pay)**: $\\text{{₹{breakdown['hourly_ot_rate']:,.2f}}} \\times {breakdown['total_ot_hours']} \\text{{ hrs}} = \\mathbf{{\\text{{₹{breakdown['overtime_pay']:,.2f}}}}}$
+        - **चाय खर्च (Tea Expense @ ₹7)**: $\\text{{₹7.00}} \\times {breakdown['total_teas']} \\text{{ teas}} = \\mathbf{{\\text{{₹{breakdown['tea_expense']:,.2f}}}}}$ *(overtime > 5 PM / < 9 AM तथा working Tuesday)*
         
-        $$\\mathbf{{\\text{{कुल वेतन (Net Gross Salary) = ₹{breakdown['base_pay']:,.2f} + ₹{breakdown['overtime_pay']:,.2f} = ₹{breakdown['total_gross_salary']:,.2f}}}}}$$
+        $$\\mathbf{{\\text{{कुल वेतन (Net Gross Salary) = ₹{breakdown['base_pay']:,.2f} + ₹{breakdown['overtime_pay']:,.2f} + ₹{breakdown['tea_expense']:,.2f} = ₹{breakdown['total_gross_salary']:,.2f}}}}}$$
         """)
 
     st.divider()
@@ -230,6 +231,7 @@ def render_employee_monthly_view(default_emp_id: str = None, is_admin: bool = Tr
             "Check IN": filtered_df["check_in"],
             "Check OUT": filtered_df["check_out"],
             "Overtime": filtered_df["overtime_hours"].apply(lambda h: f"{h:.1f} hrs" if h > 0 else "—"),
+            "Tea (₹7)": filtered_df["tea_expense"].apply(lambda t: f"₹{t:.0f}" if t > 0 else "—"),
             "Paid Status": filtered_df["is_paid"].apply(lambda p: "✅ Paid" if p else "— Unpaid"),
             "Remarks / Notes": filtered_df["remarks"]
         })
@@ -251,6 +253,7 @@ def render_employee_monthly_view(default_emp_id: str = None, is_admin: bool = Tr
         "Check IN": days_df["check_in"],
         "Check OUT": days_df["check_out"],
         "Overtime (Hours)": days_df["overtime_hours"],
+        "Tea Expense": days_df["tea_expense"],
         "Paid Day": days_df["is_paid"].apply(lambda p: "Yes" if p else "No"),
         "Remarks": days_df["remarks"]
     })

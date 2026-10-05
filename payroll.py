@@ -100,6 +100,74 @@ def calculate_overtime_hours(check_out_dt: datetime, check_in_dt: datetime = Non
     return float(morning_ot + evening_ot)
 
 
+TEA_RATE = 7.0
+
+
+def calculate_daily_tea_count(
+    check_in_dt=None,
+    check_out_dt=None,
+    is_tuesday: bool = False,
+    overtime_hours: float = 0.0,
+    has_worked: bool = True
+) -> int:
+    """
+    Calculates number of tea allowances (Rs. 7 each) for a given day:
+    1. Early Morning Overtime (check-in before 9:00 AM using 30-min rounding threshold): +1 tea
+    2. Evening Overtime (check-out after 5:00 PM with 30-min buffer): +1 tea
+    3. Working on Tuesday (company weekly off day): +1 tea
+    4. Continuous overnight marathon shift (overtime_hours >= 16.0): covers both evening and overnight/morning (+2 teas)
+    """
+    if not has_worked:
+        return 0
+
+    tea_count = 0
+
+    # 1. Working on Tuesday (weekly holiday worked)
+    if is_tuesday:
+        tea_count += 1
+
+    # 2. Continuous overnight marathon shift (>= 16.0 hrs OT)
+    if overtime_hours >= 16.0:
+        tea_count += 2
+        return tea_count
+
+    # 3. Morning Overtime (Check-in before 9:00 AM)
+    if check_in_dt is not None:
+        c_in = check_in_dt
+        if isinstance(c_in, str):
+            try:
+                c_in = datetime.fromisoformat(c_in)
+            except Exception:
+                c_in = None
+        if c_in is not None:
+            if c_in.tzinfo is None:
+                c_in = c_in.replace(tzinfo=IST)
+            else:
+                c_in = c_in.astimezone(IST)
+            rounded_in = round_check_in_time(c_in)
+            if rounded_in.hour * 60 + rounded_in.minute < 9 * 60:
+                tea_count += 1
+
+    # 4. Evening Overtime (Check-out after 5:00 PM past 30-min buffer)
+    if check_out_dt is not None:
+        c_out = check_out_dt
+        if isinstance(c_out, str):
+            try:
+                c_out = datetime.fromisoformat(c_out)
+            except Exception:
+                c_out = None
+        if c_out is not None:
+            if c_out.tzinfo is None:
+                c_out = c_out.replace(tzinfo=IST)
+            else:
+                c_out = c_out.astimezone(IST)
+            mins_past_5pm = (c_out.hour * 60 + c_out.minute) - (17 * 60)
+            if mins_past_5pm > 30:
+                tea_count += 1
+
+    return tea_count
+
+
 def count_tuesdays_in_month(year: int, month: int) -> int:
     """
     Count number of Tuesdays (weekly holiday) in a given month and year.
@@ -162,8 +230,28 @@ def generate_monthly_payroll(year: int, month: int) -> pd.DataFrame:
         # Present days = count of unique dates marked
         present_days = len(emp_att["date"].unique()) if not emp_att.empty else 0
 
-        # Sum of overtime hours
-        total_ot_hours = float(emp_att["overtime_hours"].sum()) if not emp_att.empty else 0.0
+        # Sum of overtime hours and tea expense
+        total_ot_hours = 0.0
+        total_teas = 0
+        if not emp_att.empty:
+            total_ot_hours = float(emp_att["overtime_hours"].sum())
+            for _, att_row in emp_att.iterrows():
+                row_date_str = str(att_row.get("date") or "")
+                row_is_tue = False
+                if row_date_str:
+                    try:
+                        row_is_tue = (date.fromisoformat(row_date_str).weekday() == 1)
+                    except Exception:
+                        pass
+                row_ot = float(att_row.get("overtime_hours") or 0.0)
+                row_teas = calculate_daily_tea_count(
+                    check_in_dt=att_row.get("check_in"),
+                    check_out_dt=att_row.get("check_out"),
+                    is_tuesday=row_is_tue,
+                    overtime_hours=row_ot,
+                    has_worked=True
+                )
+                total_teas += row_teas
 
         # Calculation basis
         total_paid_days = present_days + emp_weekly_offs + emp_extra_holidays
@@ -173,7 +261,8 @@ def generate_monthly_payroll(year: int, month: int) -> pd.DataFrame:
 
         base_pay = daily_rate * total_paid_days
         overtime_pay = hourly_ot_rate * total_ot_hours
-        net_gross_salary = base_pay + overtime_pay
+        tea_expense = total_teas * TEA_RATE
+        net_gross_salary = base_pay + overtime_pay + tea_expense
 
         records.append({
             "employee_id": emp_id,
@@ -187,6 +276,7 @@ def generate_monthly_payroll(year: int, month: int) -> pd.DataFrame:
             "Daily Rate": round(daily_rate, 2),
             "Base Pay": round(base_pay, 2),
             "Overtime Pay": round(overtime_pay, 2),
+            "Tea Expense": round(tea_expense, 2),
             "Total Gross Salary": round(net_gross_salary, 2)
         })
 
@@ -253,6 +343,7 @@ def get_employee_monthly_breakdown(employee_id: str, year: int, month: int) -> d
     improper_dates = []
     worked_days_count = 0
     total_ot_hours = 0.0
+    total_teas = 0
     absent_days_count = 0
     tuesdays_observed = 0
 
@@ -280,9 +371,18 @@ def get_employee_monthly_breakdown(employee_id: str, year: int, month: int) -> d
         is_paid = False
         can_fix = False
 
+        day_tea_count = 0
         if has_in or has_out:
             worked_days_count += 1
             total_ot_hours += ot_hours
+            day_tea_count = calculate_daily_tea_count(
+                check_in_dt=rec.get("check_in") if rec is not None else None,
+                check_out_dt=rec.get("check_out") if rec is not None else None,
+                is_tuesday=is_tuesday,
+                overtime_hours=ot_hours,
+                has_worked=True
+            )
+            total_teas += day_tea_count
 
             if has_in and has_out:
                 completed_punch_days += 1
@@ -360,6 +460,8 @@ def get_employee_monthly_breakdown(employee_id: str, year: int, month: int) -> d
             "check_in": in_time_str,
             "check_out": out_time_str,
             "overtime_hours": ot_hours,
+            "tea_count": day_tea_count,
+            "tea_expense": day_tea_count * TEA_RATE,
             "status_key": status_key,
             "status_label": status_label,
             "status_badge_color": status_badge_color,
@@ -376,7 +478,8 @@ def get_employee_monthly_breakdown(employee_id: str, year: int, month: int) -> d
 
     base_pay = daily_rate * total_paid_days
     overtime_pay = hourly_ot_rate * total_ot_hours
-    total_gross_salary = base_pay + overtime_pay
+    tea_expense = total_teas * TEA_RATE
+    total_gross_salary = base_pay + overtime_pay + tea_expense
 
     return {
         "employee_id": employee_id,
@@ -398,6 +501,8 @@ def get_employee_monthly_breakdown(employee_id: str, year: int, month: int) -> d
         "extra_holidays": emp_extra_holidays,
         "total_paid_days": total_paid_days,
         "total_ot_hours": round(total_ot_hours, 1),
+        "total_teas": total_teas,
+        "tea_expense": round(tea_expense, 2),
         "base_pay": round(base_pay, 2),
         "overtime_pay": round(overtime_pay, 2),
         "total_gross_salary": round(total_gross_salary, 2),

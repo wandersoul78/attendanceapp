@@ -4,7 +4,7 @@ Unit tests to verify overtime calculation, Tuesday counting, and check-in time r
 """
 
 from datetime import datetime, timezone, timedelta
-from payroll import calculate_overtime_hours, count_tuesdays_in_month
+from payroll import calculate_overtime_hours, count_tuesdays_in_month, calculate_daily_tea_count, TEA_RATE
 from utils import round_check_in_time, IST
 
 
@@ -147,7 +147,7 @@ def test_employee_monthly_breakdown():
         f"Base pay formula mismatch: {res['base_pay']} != {expected_base_pay}"
     )
 
-    expected_gross = round(res["base_pay"] + res["overtime_pay"], 2)
+    expected_gross = round(res["base_pay"] + res["overtime_pay"] + res.get("tea_expense", 0.0), 2)
     assert abs(round(res["total_gross_salary"], 2) - expected_gross) <= 0.05, (
         f"Total gross salary mismatch: {res['total_gross_salary']} != {expected_gross}"
     )
@@ -167,8 +167,53 @@ def test_employee_monthly_breakdown():
     print("[OK] All Employee Monthly Breakdown Unit Tests Passed!")
 
 
+def test_tea_expense():
+    # 1. 9 AM to 9 PM (Regular day) -> 1 tea (Rs. 7)
+    c_in = datetime(2026, 9, 9, 9, 0, tzinfo=IST)
+    c_out = datetime(2026, 9, 9, 21, 0, tzinfo=IST)
+    assert calculate_daily_tea_count(c_in, c_out, is_tuesday=False) == 1, "Failed: 9 AM to 9 PM"
+
+    # 2. 7 AM to 5 PM (Regular day) -> 1 tea (Rs. 7)
+    c_in = datetime(2026, 9, 9, 7, 0, tzinfo=IST)
+    c_out = datetime(2026, 9, 9, 17, 0, tzinfo=IST)
+    assert calculate_daily_tea_count(c_in, c_out, is_tuesday=False) == 1, "Failed: 7 AM to 5 PM"
+
+    # 3. 7 AM to 9 PM (Regular day) -> 2 teas (Rs. 14)
+    c_in = datetime(2026, 9, 9, 7, 0, tzinfo=IST)
+    c_out = datetime(2026, 9, 9, 21, 0, tzinfo=IST)
+    assert calculate_daily_tea_count(c_in, c_out, is_tuesday=False) == 2, "Failed: 7 AM to 9 PM"
+
+    # 4. Marathon Shift Day 1 (overtime >= 16.0 hrs) -> 2 teas (Rs. 14)
+    assert calculate_daily_tea_count(overtime_hours=16.0, has_worked=True) == 2, "Failed: Marathon Shift Day 1"
+
+    # 5. Marathon Shift Day 2 until 9 PM -> 1 tea (Rs. 7)
+    c_in_day2 = datetime(2026, 9, 10, 9, 0, tzinfo=IST)
+    c_out_day2 = datetime(2026, 9, 10, 21, 0, tzinfo=IST)
+    assert calculate_daily_tea_count(c_in_day2, c_out_day2, is_tuesday=False) == 1, "Failed: Marathon Shift Day 2 until 9 PM"
+
+    # 6. Working Tuesday 9 AM to 5 PM -> 1 tea (Rs. 7)
+    c_in_tue = datetime(2026, 9, 8, 9, 0, tzinfo=IST)
+    c_out_tue = datetime(2026, 9, 8, 17, 0, tzinfo=IST)
+    assert calculate_daily_tea_count(c_in_tue, c_out_tue, is_tuesday=True) == 1, "Failed: Working Tuesday 9 AM to 5 PM"
+
+    # 7. Working Tuesday 7 AM to 9 PM -> 3 teas (Rs. 21)
+    c_in_tue_ot = datetime(2026, 9, 8, 7, 0, tzinfo=IST)
+    c_out_tue_ot = datetime(2026, 9, 8, 21, 0, tzinfo=IST)
+    assert calculate_daily_tea_count(c_in_tue_ot, c_out_tue_ot, is_tuesday=True) == 3, "Failed: Working Tuesday 7 AM to 9 PM"
+
+    # 8. Regular shift 9 AM to 5 PM -> 0 teas
+    c_in_reg = datetime(2026, 9, 9, 9, 0, tzinfo=IST)
+    c_out_reg = datetime(2026, 9, 9, 17, 0, tzinfo=IST)
+    assert calculate_daily_tea_count(c_in_reg, c_out_reg, is_tuesday=False) == 0, "Failed: Regular 9 AM to 5 PM"
+
+    print("[OK] All Tea Expense Unit Tests Passed!")
+
+
 if __name__ == "__main__":
     test_check_in_rounding()
     test_overtime_calculation()
+    test_tea_expense()
     test_tuesdays_count()
     test_employee_monthly_breakdown()
+
+
